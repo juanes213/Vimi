@@ -27,7 +27,7 @@ export const SECTION_DETAILS: Record<
   chat: {
     label: "Vimi",
     eyebrow: "Presence mode",
-    description: "Un espacio para hablar, pensar y reorganizar tu dia con alguien que se siente cercano.",
+    description: "Un espacio para hablar, decidir y poner en marcha lo importante con Vimi.",
     accent: "#d97757",
     aura: "#f4c7a0",
     shadow: "rgba(217, 119, 87, 0.35)",
@@ -47,7 +47,7 @@ export const SECTION_DETAILS: Record<
   reminders: {
     label: "Cuidados",
     eyebrow: "Care mode",
-    description: "Recordatorios con tono humano, para acompanarte sin invadirte.",
+    description: "Seguimientos y recordatorios con tono humano, pensados para mover acciones sin invadirte.",
     accent: "#c58a63",
     aura: "#f0d0b2",
     shadow: "rgba(197, 138, 99, 0.3)",

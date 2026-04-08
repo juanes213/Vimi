@@ -19,12 +19,12 @@ const SECTION_RITUALS: Record<Section, { title: string; body: string }[]> = {
       body: "Este espacio puede recibir ideas incompletas, emociones mezcladas o decisiones que aun no cierran.",
     },
     {
-      title: "Convierte ruido en pasos",
-      body: "Desde aqui deberia nacer accion concreta, no solo una conversacion bonita.",
+      title: "Convierte decision en ejecucion",
+      body: "Desde aqui Vimi deberia transformar ideas y decisiones en acciones concretas.",
     },
     {
-      title: "Vuelve cuando quieras",
-      body: "La experiencia necesita sentirse disponible, casi como una presencia discreta en tu dia.",
+      title: "Siempre listo para actuar",
+      body: "La experiencia necesita sentirse disponible, cercana y capaz de mover tu vida hacia delante.",
     },
   ],
   tasks: [
@@ -43,8 +43,8 @@ const SECTION_RITUALS: Record<Section, { title: string; body: string }[]> = {
   ],
   reminders: [
     {
-      title: "Memoria con tacto",
-      body: "Los recordatorios deben aparecer como cuidado, no como alarma fria.",
+      title: "Memoria con movimiento",
+      body: "Los recordatorios deben convertirse en acciones, seguimiento y decisiones oportunas.",
     },
     {
       title: "Tiempo respirable",
@@ -100,11 +100,11 @@ const SECTION_RITUALS: Record<Section, { title: string; body: string }[]> = {
 };
 
 const SECTION_SIGNALS: Record<Section, string[]> = {
-  chat: ["vimi", "claridad", "presencia"],
+  chat: ["vimi", "ejecucion", "presencia"],
   tasks: ["prioridad", "avance", "ligereza"],
-  reminders: ["cuidado", "timing", "habito"],
-  payments: ["flujo", "orden", "serenidad"],
-  budgets: ["balance", "margen", "conciencia"],
+  reminders: ["cuidado", "timing", "accion"],
+  payments: ["flujo", "orden", "ejecucion"],
+  budgets: ["balance", "margen", "decision"],
   events: ["ritmo", "encuentros", "anticipacion"],
 };
 
@@ -149,12 +149,11 @@ function AuthPage() {
         <section className="panel-surface fade-rise p-8 sm:p-10 lg:p-12">
           <span className="status-chip">Vimi / asistente de vida</span>
           <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-tight text-stone-900 sm:text-5xl">
-            Vimi no deberia sentirse como otra herramienta de productividad.
+            Tu vida, decidida por ti. Ejecutada por Vimi.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-stone-600 sm:text-lg">
-            Vimi necesita sentirse como una presencia amable: una mezcla entre mascota digital,
-            amigo cercano y consultor personal. Calma visual, animaciones sutiles y una interfaz
-            con calor propio.
+            Vimi no esta aqui solo para recordar o tomar nota. Debe sentirse como una presencia
+            amable que entiende contexto, propone claridad y ejecuta lo que tu decides.
           </p>
 
           <div className="mt-8 grid gap-3 md:grid-cols-3">
@@ -185,7 +184,7 @@ function AuthPage() {
               <p className="text-sm uppercase tracking-[0.24em] text-stone-400">Bienvenido a Vimi</p>
               <h2 className="mt-1 text-3xl font-semibold text-stone-900">Entra a tu espacio con Vimi</h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-stone-600">
-                Una entrada limpia y serena para iniciar el dia con foco, conversacion y contexto.
+                Una entrada limpia y serena para iniciar el dia con foco, conversacion y ejecucion.
               </p>
             </div>
           </div>
@@ -253,7 +252,7 @@ function Dashboard() {
               <div>
                 <p className="text-sm uppercase tracking-[0.24em] text-stone-400">{detail.eyebrow}</p>
                 <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-tight text-stone-900">
-                  Vimi te acompana, no solo te administra.
+                  Vimi convierte decisiones en movimiento.
                 </h1>
               </div>
 

@@ -32,7 +32,7 @@ export function ChatSection() {
         <div>
           <h2 className="text-2xl font-semibold text-stone-900">Habla con Vimi</h2>
           <p className="text-sm leading-6 text-stone-500">
-            Habla con Vimi para ordenar ideas, crear acciones o simplemente aterrizar el dia.
+            Habla con Vimi para ordenar ideas, decidir mejor y activar lo que sigue.
           </p>
         </div>
         <span className="status-chip">presencia activa</span>
@@ -50,8 +50,8 @@ export function ChatSection() {
                   Aqui empieza tu relacion con Vimi.
                 </p>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">
-                  Puedes pedir ayuda para planear, descargar una idea a medias o convertir algo
-                  difuso en una accion concreta.
+                  Puedes pedir ayuda para planear, descargar una idea a medias o convertir una
+                  decision en accion concreta.
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   <span className="status-chip">organiza mi tarde</span>

@@ -99,7 +99,7 @@ export function TasksSection() {
           <div className="panel-soft px-6 py-10 text-center">
             <p className="text-lg font-semibold text-stone-800">Todavia no hay tareas.</p>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Puedes empezar con una sola accion pequena y dejar que Vimi te ayude con el resto.
+              Puedes empezar con una sola decision pequena y dejar que Vimi la convierta en avance.
             </p>
           </div>
         )}
