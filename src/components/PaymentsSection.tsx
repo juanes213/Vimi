@@ -52,13 +52,13 @@ export function PaymentsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Compromisos recurrentes</h2>
+          <h2 className="text-2xl font-semibold text-stone-900">Recurring commitments</h2>
           <p className="text-sm leading-6 text-stone-500">
-            Flujo estimado / ${totalMonthly.toFixed(2)} al mes
+            Estimated flow / ${totalMonthly.toFixed(2)} per month
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="primary-button self-start">
-          {showForm ? "Cerrar" : "Agregar pago"}
+          {showForm ? "Close" : "Add payment"}
         </button>
       </div>
 
@@ -67,7 +67,7 @@ export function PaymentsSection() {
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <input
               className="surface-input"
-              placeholder="Nombre del pago"
+              placeholder="Payment name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -76,7 +76,7 @@ export function PaymentsSection() {
               type="number"
               step="0.01"
               className="surface-input sm:w-40"
-              placeholder="Monto"
+              placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
@@ -99,7 +99,7 @@ export function PaymentsSection() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              <option value="">Categoria opcional</option>
+              <option value="">Category (optional)</option>
               {BUDGET_CATEGORIES.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -116,10 +116,10 @@ export function PaymentsSection() {
           />
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="secondary-button">
-              Cancelar
+              Cancel
             </button>
             <button type="submit" className="primary-button">
-              Guardar pago
+              Save payment
             </button>
           </div>
         </form>
@@ -128,9 +128,9 @@ export function PaymentsSection() {
       <div className="flex flex-col gap-3">
         {payments.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">Aun no has registrado pagos recurrentes.</p>
+            <p className="text-lg font-semibold text-stone-800">No recurring payments yet.</p>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Aqui deberias sentir claridad financiera sin entrar en una atmosfera bancaria.
+              Here you should feel financial clarity without entering a banking atmosphere.
             </p>
           </div>
         )}
@@ -152,7 +152,7 @@ export function PaymentsSection() {
               <div className="mt-2 flex flex-wrap gap-2">
                 <span className="status-chip">${payment.amount.toFixed(2)}</span>
                 <span className="status-chip">{payment.frequency}</span>
-                <span className="status-chip">proximo / {formatDate(payment.nextDueDate)}</span>
+                <span className="status-chip">next / {formatDate(payment.nextDueDate)}</span>
               </div>
             </div>
 
@@ -160,12 +160,10 @@ export function PaymentsSection() {
               onClick={() => toggleStatus({ id: payment._id })}
               className={cn(
                 "secondary-button px-4 py-2 text-xs uppercase tracking-[0.18em]",
-                payment.status === "active"
-                  ? "text-amber-700"
-                  : "text-emerald-700",
+                payment.status === "active" ? "text-amber-700" : "text-emerald-700",
               )}
             >
-              {payment.status === "active" ? "Pausar" : "Reactivar"}
+              {payment.status === "active" ? "Pause" : "Resume"}
             </button>
             <button onClick={() => removePayment({ id: payment._id })} className="text-sm text-stone-300 transition-colors hover:text-red-400">
               x

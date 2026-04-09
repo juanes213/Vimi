@@ -35,13 +35,13 @@ export function EventsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Momentos del calendario</h2>
+          <h2 className="text-2xl font-semibold text-stone-900">Calendar moments</h2>
           <p className="text-sm leading-6 text-stone-500">
-            {upcoming.length} proximos / {past.length} pasados
+            {upcoming.length} upcoming / {past.length} past
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="primary-button self-start">
-          {showForm ? "Cerrar" : "Nuevo evento"}
+          {showForm ? "Close" : "New event"}
         </button>
       </div>
 
@@ -49,7 +49,7 @@ export function EventsSection() {
         <form onSubmit={handleSubmit} className="panel-soft flex flex-col gap-3 p-5">
           <input
             className="surface-input"
-            placeholder="Nombre del evento"
+            placeholder="Event name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -71,10 +71,10 @@ export function EventsSection() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="secondary-button">
-              Cancelar
+              Cancel
             </button>
             <button type="submit" className="primary-button">
-              Guardar evento
+              Save event
             </button>
           </div>
         </form>
@@ -83,16 +83,16 @@ export function EventsSection() {
       <div className="flex flex-col gap-3">
         {events.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">Todavia no hay eventos guardados.</p>
+            <p className="text-lg font-semibold text-stone-800">No events saved yet.</p>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Cuando agregues momentos aqui, la agenda se va a sentir menos tecnica y mas tuya.
+              When you add moments here, your schedule will feel less technical and more yours.
             </p>
           </div>
         )}
 
         {upcoming.length > 0 && (
           <>
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Proximos</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Upcoming</p>
             {upcoming.map((event) => (
               <EventCard key={event._id} event={event} onDelete={() => removeEvent({ id: event._id })} />
             ))}
@@ -101,7 +101,7 @@ export function EventsSection() {
 
         {past.length > 0 && (
           <>
-            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-stone-400">Recientes</p>
+            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-stone-400">Recent</p>
             {past.map((event) => (
               <EventCard
                 key={event._id}
@@ -127,7 +127,7 @@ function EventCard({
   isPast?: boolean;
 }) {
   const day = new Date(event.date).getDate();
-  const month = new Date(event.date).toLocaleDateString("es-ES", { month: "short" });
+  const month = new Date(event.date).toLocaleDateString("en-US", { month: "short" });
 
   return (
     <div className={`panel-soft flex items-center gap-3 p-4 ${isPast ? "opacity-60" : ""}`}>
@@ -139,8 +139,8 @@ function EventCard({
       <div className="flex-1">
         <p className="text-sm font-semibold text-stone-900">{event.title}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="status-chip">fecha / {formatDate(event.date)}</span>
-          {event.time && <span className="status-chip">hora / {event.time}</span>}
+          <span className="status-chip">date / {formatDate(event.date)}</span>
+          {event.time && <span className="status-chip">time / {event.time}</span>}
         </div>
       </div>
 

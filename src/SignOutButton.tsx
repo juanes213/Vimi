@@ -12,7 +12,7 @@ export function SignOutButton() {
 
   return (
     <button className="secondary-button" onClick={() => void signOut()}>
-      Salir
+      Sign out
     </button>
   );
 }

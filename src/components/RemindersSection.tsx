@@ -35,13 +35,13 @@ export function RemindersSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Cuidados pendientes</h2>
+          <h2 className="text-2xl font-semibold text-stone-900">Pending reminders</h2>
           <p className="text-sm leading-6 text-stone-500">
-            {pending.length} por atender / {completed.length} resueltos
+            {pending.length} to attend / {completed.length} resolved
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="primary-button self-start">
-          {showForm ? "Cerrar" : "Nuevo recordatorio"}
+          {showForm ? "Close" : "New reminder"}
         </button>
       </div>
 
@@ -49,7 +49,7 @@ export function RemindersSection() {
         <form onSubmit={handleSubmit} className="panel-soft flex flex-col gap-3 p-5">
           <input
             className="surface-input"
-            placeholder="Que quieres recordar?"
+            placeholder="What do you want to remember?"
             value={text}
             onChange={(e) => setText(e.target.value)}
             required
@@ -71,10 +71,10 @@ export function RemindersSection() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="secondary-button">
-              Cancelar
+              Cancel
             </button>
             <button type="submit" className="primary-button">
-              Guardar recordatorio
+              Save reminder
             </button>
           </div>
         </form>
@@ -83,9 +83,9 @@ export function RemindersSection() {
       <div className="flex flex-col gap-3">
         {reminders.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">Aun no has guardado recordatorios.</p>
+            <p className="text-lg font-semibold text-stone-800">No reminders saved yet.</p>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Esta zona funciona mejor cuando te recuerda con calma en vez de sonar como una alarma.
+              This space works best when it nudges you calmly instead of sounding like an alarm.
             </p>
           </div>
         )}
@@ -127,8 +127,8 @@ export function RemindersSection() {
                 {reminder.text}
               </p>
               <p className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
-                <span className="status-chip">fecha / {formatDate(reminder.date)}</span>
-                {reminder.time && <span className="status-chip">hora / {reminder.time}</span>}
+                <span className="status-chip">date / {formatDate(reminder.date)}</span>
+                {reminder.time && <span className="status-chip">time / {reminder.time}</span>}
               </p>
             </div>
 

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalAction } from "./_generated/server";
+import { mutation, query, internalMutation, internalAction, httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import OpenAI from "openai";
 
@@ -448,4 +448,138 @@ export const parseMessageAndCreateEntities = mutation({
 
     return { detectedType: intent.type, entityId };
   },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Streaming voz: HTTP action con Server-Sent Events
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const insertUserMessage = internalMutation({
+  args: { text: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("chatMessages", {
+      text: args.text,
+      role: "user",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+const VIMI_SYSTEM_PROMPT = `You are Vimi, a warm and close life assistant that speaks English.
+Your tone is human, brief, and conversational — you are responding by voice, not by text,
+so avoid bullet lists, markdown, asterisks, or any formatting. Speak like a caring friend
+and consultant who helps the person organize their ideas and execute what they decide.
+
+When the user mentions creating a task, reminder, event, budget, or recurring payment,
+at the END of your response add a JSON block on a separate line with this shape (only one):
+{"action": "create_task", "title": "...", "priority": "high|medium|low"}
+{"action": "create_reminder", "text": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}
+{"action": "create_event", "title": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}
+
+The JSON block will not be spoken aloud — it is stripped before being sent to TTS.
+Always respond first with natural language, then the JSON if applicable. Be brief: 1-3 sentences.`;
+
+/**
+ * HTTP streaming endpoint para voz. Recibe { text } por POST, guarda el mensaje
+ * del usuario, llama a OpenAI con stream: true, y devuelve un stream SSE con
+ * los deltas de texto. Al finalizar guarda el mensaje del assistant y procesa
+ * acciones (crear tarea/recordatorio/evento).
+ */
+export const streamChat = httpAction(async (ctx, request) => {
+  const { text } = (await request.json()) as { text?: string };
+  if (!text || !text.trim()) {
+    return new Response("missing text", { status: 400 });
+  }
+
+  await ctx.runMutation(internal.chat.insertUserMessage, { text });
+
+  const openai = new OpenAI({
+    baseURL: process.env.CONVEX_OPENAI_BASE_URL,
+    apiKey: process.env.CONVEX_OPENAI_API_KEY,
+  });
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: string, data: unknown) => {
+        controller.enqueue(
+          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        );
+      };
+
+      let full = "";
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1-nano",
+          stream: true,
+          messages: [
+            { role: "system", content: VIMI_SYSTEM_PROMPT },
+            { role: "user", content: text },
+          ],
+        });
+
+        for await (const chunk of completion) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) {
+            full += delta;
+            send("delta", { text: delta });
+          }
+        }
+      } catch (err) {
+        console.error("[streamChat] openai error", err);
+        send("error", { message: String(err) });
+      }
+
+      // Extraer y limpiar JSON de acción
+      let parsedType: string | undefined;
+      let spokenText = full;
+      const jsonMatch = full.match(/\{[\s\S]*"action"[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          parsedType = parsed.action;
+          spokenText = full.replace(jsonMatch[0], "").trim();
+
+          if (parsed.action === "create_task" && parsed.title) {
+            await ctx.runMutation(internal.chat.createTaskFromChat, {
+              title: parsed.title,
+              priority: parsed.priority,
+            });
+          } else if (parsed.action === "create_reminder" && parsed.text) {
+            await ctx.runMutation(internal.chat.createReminderFromChat, {
+              text: parsed.text,
+              date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
+            });
+          } else if (parsed.action === "create_event" && parsed.title) {
+            await ctx.runMutation(internal.chat.createEventFromChat, {
+              title: parsed.title,
+              date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
+              time: parsed.time,
+            });
+          }
+        } catch {
+          /* no era JSON válido */
+        }
+      }
+
+      await ctx.runMutation(internal.chat.saveAssistantMessage, {
+        text: spokenText || full || "(sin respuesta)",
+        parsedType,
+      });
+
+      send("done", { parsedType });
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
 });

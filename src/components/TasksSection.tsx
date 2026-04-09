@@ -40,13 +40,13 @@ export function TasksSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Enfoque del dia</h2>
+          <h2 className="text-2xl font-semibold text-stone-900">Today's focus</h2>
           <p className="text-sm leading-6 text-stone-500">
-            {pending.length} pendientes / {completed.length} completadas
+            {pending.length} pending / {completed.length} completed
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="primary-button self-start">
-          {showForm ? "Cerrar" : "Nueva tarea"}
+          {showForm ? "Close" : "New task"}
         </button>
       </div>
 
@@ -54,14 +54,14 @@ export function TasksSection() {
         <form onSubmit={handleSubmit} className="panel-soft flex flex-col gap-3 p-5">
           <input
             className="surface-input"
-            placeholder="Titulo de la tarea"
+            placeholder="Task title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
           />
           <textarea
             className="surface-input min-h-24 resize-none"
-            placeholder="Que implica esta tarea?"
+            placeholder="What does this task involve?"
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -78,17 +78,17 @@ export function TasksSection() {
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
-              <option value="high">Alta prioridad</option>
-              <option value="medium">Prioridad media</option>
-              <option value="low">Baja prioridad</option>
+              <option value="high">High priority</option>
+              <option value="medium">Medium priority</option>
+              <option value="low">Low priority</option>
             </select>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="secondary-button">
-              Cancelar
+              Cancel
             </button>
             <button type="submit" className="primary-button">
-              Guardar tarea
+              Save task
             </button>
           </div>
         </form>
@@ -97,9 +97,9 @@ export function TasksSection() {
       <div className="flex flex-col gap-3">
         {tasks.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">Todavia no hay tareas.</p>
+            <p className="text-lg font-semibold text-stone-800">No tasks yet.</p>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Puedes empezar con una sola decision pequena y dejar que Vimi la convierta en avance.
+              Start with one small decision and let Vimi turn it into progress.
             </p>
           </div>
         )}
@@ -183,7 +183,7 @@ function TaskCard({
               {task.priority}
             </span>
           )}
-          {task.dueDate && <span className="status-chip">vence / {formatDate(task.dueDate)}</span>}
+          {task.dueDate && <span className="status-chip">due / {formatDate(task.dueDate)}</span>}
           {task.source === "chat" && <span className="status-chip">via vimi</span>}
         </div>
       </div>

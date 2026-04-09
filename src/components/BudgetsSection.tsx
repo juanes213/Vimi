@@ -27,7 +27,7 @@ export function BudgetsSection() {
   }
 
   const total = budgets.reduce((sum, budget) => sum + budget.amount, 0);
-  const monthLabel = new Date(`${currentMonth}-01`).toLocaleDateString("es-ES", {
+  const monthLabel = new Date(`${currentMonth}-01`).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
@@ -36,13 +36,13 @@ export function BudgetsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Pulso financiero</h2>
+          <h2 className="text-2xl font-semibold text-stone-900">Financial pulse</h2>
           <p className="text-sm leading-6 text-stone-500">
             {monthLabel} / total ${total.toFixed(2)}
           </p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="primary-button self-start">
-          {showForm ? "Cerrar" : "Agregar presupuesto"}
+          {showForm ? "Close" : "Add budget"}
         </button>
       </div>
 
@@ -64,7 +64,7 @@ export function BudgetsSection() {
               type="number"
               step="0.01"
               className="surface-input sm:w-40"
-              placeholder="Monto"
+              placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
@@ -72,10 +72,10 @@ export function BudgetsSection() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="secondary-button">
-              Cancelar
+              Cancel
             </button>
             <button type="submit" className="primary-button">
-              Guardar presupuesto
+              Save budget
             </button>
           </div>
         </form>
@@ -83,9 +83,9 @@ export function BudgetsSection() {
 
       {budgets.length === 0 ? (
         <div className="panel-soft px-6 py-10 text-center">
-          <p className="text-lg font-semibold text-stone-800">No hay presupuesto para este mes.</p>
+          <p className="text-lg font-semibold text-stone-800">No budget set for this month.</p>
           <p className="mt-2 text-sm leading-6 text-stone-500">
-            Esta parte deberia sentirse como claridad y margen, no como una hoja de calculo.
+            This section should feel like clarity and margin, not a spreadsheet.
           </p>
         </div>
       ) : (
@@ -115,7 +115,7 @@ export function BudgetsSection() {
                   />
                 </div>
                 <p className="mt-2 text-xs uppercase tracking-[0.18em] text-stone-400">
-                  {pct.toFixed(0)}% del total
+                  {pct.toFixed(0)}% of total
                 </p>
               </div>
             );

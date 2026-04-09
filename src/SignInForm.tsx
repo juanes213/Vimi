@@ -20,12 +20,12 @@ export function SignInForm() {
           void signIn("password", formData).catch((error) => {
             let toastTitle = "";
             if (error.message.includes("Invalid password")) {
-              toastTitle = "Contrasena invalida. Intentalo de nuevo.";
+              toastTitle = "Invalid password. Please try again.";
             } else {
               toastTitle =
                 flow === "signIn"
-                  ? "No se pudo iniciar sesion. Quizas querias crear una cuenta."
-                  : "No se pudo crear la cuenta. Quizas querias iniciar sesion.";
+                  ? "Could not sign in. Maybe you meant to create an account."
+                  : "Could not create account. Maybe you meant to sign in.";
             }
             toast.error(toastTitle);
             setSubmitting(false);
@@ -36,41 +36,41 @@ export function SignInForm() {
           className="auth-input-field"
           type="email"
           name="email"
-          placeholder="Correo"
+          placeholder="Email"
           required
         />
         <input
           className="auth-input-field"
           type="password"
           name="password"
-          placeholder="Contrasena"
+          placeholder="Password"
           required
         />
         <button className="auth-button" type="submit" disabled={submitting}>
-          {submitting ? "Entrando..." : flow === "signIn" ? "Entrar" : "Crear cuenta"}
+          {submitting ? "Signing in…" : flow === "signIn" ? "Sign in" : "Create account"}
         </button>
         <div className="text-center text-sm text-stone-500">
           <span>
-            {flow === "signIn" ? "Aun no tienes cuenta? " : "Ya tienes una cuenta? "}
+            {flow === "signIn" ? "Don't have an account? " : "Already have an account? "}
           </span>
           <button
             type="button"
             className="font-medium text-stone-900 transition-colors hover:text-[#bf6b4f]"
             onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
           >
-            {flow === "signIn" ? "Crear cuenta" : "Iniciar sesion"}
+            {flow === "signIn" ? "Create account" : "Sign in"}
           </button>
         </div>
       </form>
 
       <div className="my-5 flex items-center justify-center">
         <hr className="grow border-stone-200/70" />
-        <span className="mx-4 text-xs uppercase tracking-[0.24em] text-stone-400">o</span>
+        <span className="mx-4 text-xs uppercase tracking-[0.24em] text-stone-400">or</span>
         <hr className="grow border-stone-200/70" />
       </div>
 
       <button className="secondary-button w-full" onClick={() => void signIn("anonymous")}>
-        Entrar de forma anonima
+        Continue anonymously
       </button>
     </div>
   );

@@ -1,131 +1,39 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
 import { Authenticated, Unauthenticated, useQuery } from "convex/react";
+import { Toaster } from "sonner";
 import { api } from "../convex/_generated/api";
+import { BudgetsSection } from "./components/BudgetsSection";
+import { ChatTranscript } from "./components/ChatSection";
+import { EventsSection } from "./components/EventsSection";
+import { PaymentsSection } from "./components/PaymentsSection";
+import { RemindersSection } from "./components/RemindersSection";
+import { SECTION_DETAILS, type Section } from "./components/Sidebar";
+import { TasksSection } from "./components/TasksSection";
 import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
-import { Toaster } from "sonner";
-import { SECTION_DETAILS, Sidebar, type Section } from "./components/Sidebar";
-import { TasksSection } from "./components/TasksSection";
-import { RemindersSection } from "./components/RemindersSection";
-import { PaymentsSection } from "./components/PaymentsSection";
-import { BudgetsSection } from "./components/BudgetsSection";
-import { EventsSection } from "./components/EventsSection";
-import { ChatSection } from "./components/ChatSection";
-
-const SECTION_RITUALS: Record<Section, { title: string; body: string }[]> = {
-  chat: [
-    {
-      title: "Habla sin protocolo",
-      body: "Este espacio puede recibir ideas incompletas, emociones mezcladas o decisiones que aun no cierran.",
-    },
-    {
-      title: "Convierte decision en ejecucion",
-      body: "Desde aqui Vimi deberia transformar ideas y decisiones en acciones concretas.",
-    },
-    {
-      title: "Siempre listo para actuar",
-      body: "La experiencia necesita sentirse disponible, cercana y capaz de mover tu vida hacia delante.",
-    },
-  ],
-  tasks: [
-    {
-      title: "Prioridad calmada",
-      body: "La lista no debe presionar; debe ayudarte a distinguir lo esencial de lo accesorio.",
-    },
-    {
-      title: "Ritmo sostenible",
-      body: "Tus tareas viven mejor en bloques suaves y visibles, no en paneles agresivos.",
-    },
-    {
-      title: "Progreso sensible",
-      body: "Cada accion completada tiene que sentirse como alivio, no como burocracia.",
-    },
-  ],
-  reminders: [
-    {
-      title: "Memoria con movimiento",
-      body: "Los recordatorios deben convertirse en acciones, seguimiento y decisiones oportunas.",
-    },
-    {
-      title: "Tiempo respirable",
-      body: "Las fechas y horas importan, pero el tono con que se presentan cambia todo.",
-    },
-    {
-      title: "Pequenos anclajes",
-      body: "Esta seccion sostiene habitos y compromisos sin transformar tu dia en una lista militar.",
-    },
-  ],
-  payments: [
-    {
-      title: "Flujo visible",
-      body: "Los pagos recurrentes necesitan orden, pero tambien una lectura amable que no agobie.",
-    },
-    {
-      title: "Confianza cotidiana",
-      body: "La interfaz debe transmitir claridad financiera sin convertirse en una app bancaria.",
-    },
-    {
-      title: "Menos alerta, mas control",
-      body: "El objetivo es darte contexto y calma antes que urgencia y color rojo.",
-    },
-  ],
-  budgets: [
-    {
-      title: "Dinero con contexto",
-      body: "Tu presupuesto no es solo una cifra: es energia, decisiones y margen de tranquilidad.",
-    },
-    {
-      title: "Lectura digestiva",
-      body: "Visualiza el balance con superficies suaves, progreso delicado y sin ruido innecesario.",
-    },
-    {
-      title: "Balance humano",
-      body: "Esta parte debe sentirse cercana a una reflexion personal, no a un tablero ejecutivo.",
-    },
-  ],
-  events: [
-    {
-      title: "Tiempo habitable",
-      body: "Los eventos deben sentirse como escenas proximas de tu vida, no como filas de agenda.",
-    },
-    {
-      title: "Anticipacion suave",
-      body: "La proximidad importa, pero sin la ansiedad tipica de un calendario tradicional.",
-    },
-    {
-      title: "Momentos con tono",
-      body: "Cada fecha deberia verse como algo que te acompana y te prepara emocionalmente.",
-    },
-  ],
-};
-
-const SECTION_SIGNALS: Record<Section, string[]> = {
-  chat: ["vimi", "ejecucion", "presencia"],
-  tasks: ["prioridad", "avance", "ligereza"],
-  reminders: ["cuidado", "timing", "accion"],
-  payments: ["flujo", "orden", "ejecucion"],
-  budgets: ["balance", "margen", "decision"],
-  events: ["ritmo", "encuentros", "anticipacion"],
-};
+import { useVoiceChat, type VoiceMode } from "./hooks/useVoiceChat";
+import { cn } from "./lib/utils";
 
 const COMPANION_PILLARS = [
   {
-    title: "Mascota",
-    body: "Detalles suaves, una presencia visual viva y pequena dosis de carisma.",
+    title: "Presence",
+    body: "A calmer visual identity with Vimi as the emotional center of the product.",
   },
   {
-    title: "Consultor",
-    body: "Orden, claridad y lectura practica sin contaminar la interfaz con rigidez corporativa.",
+    title: "Execution",
+    body: "Vimi should feel capable of moving your decisions into action, not just storing them.",
   },
   {
-    title: "Amigo cercano",
-    body: "Lenguaje calido, silencios visuales y una sensacion de acompanamiento persistente.",
+    title: "Atmosphere",
+    body: "Soft galaxy gradients, subtle stars, and minimal motion so the page stays smooth.",
   },
 ];
 
+const NAV_PAGES: Section[] = ["chat", "tasks", "reminders", "payments", "budgets", "events"];
+
 export default function App() {
   return (
-    <div className="min-h-screen bg-transparent text-stone-900">
+    <div className="min-h-screen bg-transparent text-slate-100">
       <Authenticated>
         <Dashboard />
       </Authenticated>
@@ -139,28 +47,24 @@ export default function App() {
 
 function AuthPage() {
   return (
-    <div className="soft-mesh relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-6rem] top-10 h-72 w-72 rounded-full bg-[#f4c7a0]/30 blur-3xl" />
-        <div className="absolute bottom-[-4rem] right-[-4rem] h-80 w-80 rounded-full bg-[#b6d2c4]/30 blur-3xl" />
-      </div>
+    <div className="soft-galaxy relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+      <BackgroundEffects />
 
       <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="panel-surface fade-rise p-8 sm:p-10 lg:p-12">
-          <span className="status-chip">Vimi / asistente de vida</span>
-          <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-tight text-stone-900 sm:text-5xl">
-            Tu vida, decidida por ti. Ejecutada por Vimi.
+          <span className="status-chip">Vimi / life assistant</span>
+          <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
+            Your life, decided by you. Executed by Vimi.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-stone-600 sm:text-lg">
-            Vimi no esta aqui solo para recordar o tomar nota. Debe sentirse como una presencia
-            amable que entiende contexto, propone claridad y ejecuta lo que tu decides.
+          <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+            Vimi should feel like an intelligent companion with agency: warm, clear, and ready to
+            turn intent into motion.
           </p>
-
           <div className="mt-8 grid gap-3 md:grid-cols-3">
             {COMPANION_PILLARS.map((pillar) => (
               <article key={pillar.title} className="panel-soft p-4">
-                <p className="text-sm font-semibold text-stone-900">{pillar.title}</p>
-                <p className="mt-2 text-sm leading-6 text-stone-600">{pillar.body}</p>
+                <p className="text-sm font-semibold text-white">{pillar.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{pillar.body}</p>
               </article>
             ))}
           </div>
@@ -169,26 +73,17 @@ function AuthPage() {
         <section className="panel-soft fade-rise delay-1 p-7 sm:p-8">
           <div className="mb-8 flex items-center gap-4">
             <div className="floating-orb relative h-20 w-20">
-              <div
-                className="glow-pulse absolute inset-0 rounded-full"
-                style={{
-                  background:
-                    "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.92), #f4c7a0 45%, #d97757 100%)",
-                  boxShadow: "0 18px 50px rgba(217, 119, 87, 0.28)",
-                }}
-              />
-              <div className="absolute inset-[22%] rounded-full border border-white/50 bg-white/18" />
+              <div className="glow-pulse absolute inset-0 rounded-full galaxy-orb-idle" />
+              <div className="absolute inset-[22%] rounded-full border border-white/20 bg-white/8" />
             </div>
-
             <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-stone-400">Bienvenido a Vimi</p>
-              <h2 className="mt-1 text-3xl font-semibold text-stone-900">Entra a tu espacio con Vimi</h2>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-stone-600">
-                Una entrada limpia y serena para iniciar el dia con foco, conversacion y ejecucion.
+              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Welcome to Vimi</p>
+              <h2 className="mt-1 text-3xl font-semibold text-white">Step into your orbit</h2>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300">
+                A calmer, more immersive entry point built around Vimi instead of around a dashboard.
               </p>
             </div>
           </div>
-
           <SignInForm />
         </section>
       </div>
@@ -197,137 +92,421 @@ function AuthPage() {
 }
 
 function Dashboard() {
-  const [section, setSection] = useState<Section>("chat");
+  const [activePage, setActivePage] = useState<Section>("chat");
   const user = useQuery(api.auth.loggedInUser);
-  const detail = SECTION_DETAILS[section];
-  const Icon = detail.icon;
-  const today = new Intl.DateTimeFormat("es-ES", {
+  const userName = user?.email?.split("@")[0] ?? "you";
+  const voice = useVoiceChat();
+  const today = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     day: "numeric",
     month: "long",
   }).format(new Date());
-  const userName = user?.email?.split("@")[0] ?? "tu espacio";
 
-  const orbStyle = {
-    background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,0.94), ${detail.aura} 42%, ${detail.accent} 100%)`,
-    boxShadow: `0 24px 70px ${detail.shadow}`,
-  } satisfies CSSProperties;
+  const activeDetail = SECTION_DETAILS[activePage];
+  const orbStyle: CSSProperties = {
+    background:
+      "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(185,153,255,0.95) 26%, rgba(137,92,255,0.9) 52%, rgba(58,25,124,0.95) 100%)",
+    boxShadow:
+      "0 0 0 1px rgba(255,255,255,0.12), 0 32px 120px rgba(125,92,255,0.34), 0 0 120px rgba(226,104,255,0.14)",
+  };
+
+  const launchVimi = () => {
+    if (activePage !== "chat") {
+      setActivePage("chat");
+      return;
+    }
+    if (voice.activeMode === "idle") {
+      voice.startListening();
+      return;
+    }
+    voice.stopAll();
+  };
 
   return (
-    <div className="soft-mesh relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-6rem] top-14 h-72 w-72 rounded-full bg-[#f4cfa3]/30 blur-3xl" />
-        <div className="absolute bottom-[-5rem] right-[-4rem] h-80 w-80 rounded-full bg-[#c8d1eb]/26 blur-3xl" />
-        <div className="absolute right-[22%] top-[14%] h-40 w-40 rounded-full bg-[#b6d2c4]/20 blur-3xl" />
-      </div>
+    <div className="soft-galaxy relative min-h-screen overflow-hidden">
+      <BackgroundEffects />
 
-      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-32 pt-5 sm:px-6 lg:px-8">
-        <header className="fade-rise flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="status-chip">Hoy / {today}</span>
-            <span className="status-chip">Presencia suave</span>
-            <span className="status-chip">Modo / {detail.label}</span>
-          </div>
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-24 pt-5 sm:px-6 lg:px-8">
+        <header className="fade-rise">
+          <div className="panel-surface overflow-x-auto px-3 py-3 sm:px-4">
+            <nav className="mx-auto flex w-max min-w-full justify-start gap-2 md:min-w-0 md:justify-center">
+              {NAV_PAGES.map((page) => {
+                const detail = SECTION_DETAILS[page];
+                const Icon = detail.icon as ComponentType<SVGProps<SVGSVGElement>>;
+                const isActive = activePage === page;
 
-          <div className="flex items-center gap-3 self-start lg:self-auto">
-            <div className="panel-soft flex items-center gap-3 px-4 py-3">
-              <div
-                className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold text-white"
-                style={{ backgroundColor: detail.accent }}
-              >
-                {userName.slice(0, 2).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-400">Conectado con Vimi</p>
-                <p className="text-sm font-semibold text-stone-900">{userName}</p>
-              </div>
-            </div>
-            <SignOutButton />
+                return (
+                  <button
+                    key={page}
+                    onClick={() => setActivePage(page)}
+                    className={cn(
+                      "group flex items-center gap-3 rounded-full px-4 py-3 text-left transition-all duration-300",
+                      isActive
+                        ? "bg-white/12 text-white ring-1 ring-white/16"
+                        : "text-slate-300 hover:bg-white/8 hover:text-white",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition-all",
+                        isActive ? "bg-white/14" : "bg-white/6",
+                      )}
+                      style={{
+                        boxShadow: `inset 0 0 0 1px ${isActive ? "rgba(255,255,255,0.14)" : detail.aura}`,
+                      }}
+                    >
+                      <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-slate-300")} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold leading-none">{detail.label}</p>
+                      <p className={cn("mt-1 text-[11px]", isActive ? "text-slate-300" : "text-slate-500")}>
+                        {detail.eyebrow}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
         </header>
 
-        <div className="mt-6 grid flex-1 gap-6 xl:grid-cols-[0.95fr_1.35fr]">
-          <section className="panel-surface fade-rise delay-1 p-6 sm:p-8">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-stone-400">{detail.eyebrow}</p>
-                <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-tight text-stone-900">
-                  Vimi convierte decisiones en movimiento.
-                </h1>
-              </div>
+        <main className="grid flex-1 gap-6 pt-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0">
+            {activePage === "chat" ? (
+              <VimiPage voice={voice} orbStyle={orbStyle} />
+            ) : (
+              <FeaturePage section={activePage} />
+            )}
+          </div>
 
-              <div className="floating-orb relative hidden h-24 w-24 shrink-0 sm:block">
-                <div className="glow-pulse absolute inset-0 rounded-full" style={orbStyle} />
-                <div className="absolute inset-[20%] flex items-center justify-center rounded-full border border-white/60 bg-white/16">
-                  <Icon className="h-8 w-8 text-white" />
-                </div>
-              </div>
-            </div>
+          <SideInfoPanel
+            activeDetail={activeDetail}
+            activeMode={voice.activeMode}
+            autoListen={voice.autoListen}
+            onToggleAutoListen={() => voice.setAutoListen((value) => !value)}
+            today={today}
+            userName={userName}
+          />
+        </main>
 
-            <div className="mt-6 rounded-[28px] border border-white/70 bg-white/52 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)]">
-              <p className="text-sm uppercase tracking-[0.24em] text-stone-400">Nota de Vimi</p>
-              <p className="mt-3 text-lg leading-8 text-stone-700">
-                "{detail.description}"
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              {SECTION_RITUALS[section].map((ritual, index) => (
-                <article
-                  key={ritual.title}
-                  className={`panel-soft p-4 fade-rise ${index === 1 ? "delay-1" : index === 2 ? "delay-2" : ""}`}
-                >
-                  <p className="text-sm font-semibold text-stone-900">{ritual.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-stone-600">{ritual.body}</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              {COMPANION_PILLARS.map((pillar) => (
-                <article key={pillar.title} className="panel-soft p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-400">{pillar.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-stone-600">{pillar.body}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel-surface fade-rise delay-2 p-5 sm:p-6 lg:p-7">
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.24em] text-stone-400">Espacio actual</p>
-                  <h2 className="mt-2 text-3xl font-semibold text-stone-900">{detail.label}</h2>
-                  <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">{detail.description}</p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {SECTION_SIGNALS[section].map((signal) => (
-                    <span key={signal} className="status-chip">
-                      {signal}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="panel-soft min-h-[32rem] overflow-hidden p-4 sm:p-5">{renderSection(section)}</div>
-            </div>
-          </section>
-        </div>
-
-        <Sidebar active={section} onChange={setSection} />
+        <MiniOrbLauncher mode={voice.activeMode} onClick={launchVimi} />
       </div>
     </div>
   );
 }
 
-function renderSection(section: Section) {
+function VimiPage({
+  voice,
+  orbStyle,
+}: {
+  voice: ReturnType<typeof useVoiceChat>;
+  orbStyle: CSSProperties;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-5xl">
+      <div className="flex flex-col items-center gap-7 pt-4 text-center">
+        <div className="fade-rise delay-1">
+          <CentralOrb
+            mode={voice.activeMode}
+            level={voice.micLevel}
+            orbStyle={orbStyle}
+            onClick={voice.activeMode === "idle" ? voice.startListening : voice.stopAll}
+          />
+        </div>
+
+        <div className="fade-rise delay-2 max-w-2xl">
+          <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Vimi</p>
+          <h1 className="mt-4 text-4xl font-semibold leading-tight text-white sm:text-5xl">
+            Your life, decided by you. Executed by Vimi.
+          </h1>
+          <p className="mt-5 text-sm leading-7 text-slate-400 sm:text-base">
+            {voice.activeMode === "idle" && "Tap the orb to talk with Vimi"}
+            {voice.activeMode === "listening" && "Listening... speak naturally"}
+            {voice.activeMode === "thinking" && "Vimi is thinking..."}
+            {voice.activeMode === "speaking" && "Vimi is speaking. Tap or talk to interrupt."}
+          </p>
+        </div>
+
+        {(voice.activeMode === "speaking" || voice.activeMode === "thinking") && (
+          <button type="button" onClick={voice.stopAll} className="secondary-button !px-5 !py-2 text-sm">
+            Stop
+          </button>
+        )}
+      </div>
+
+      <div className="mx-auto mt-10 w-full max-w-4xl fade-rise delay-2">
+        <div className="panel-soft overflow-hidden" style={{ height: "clamp(230px, 34vh, 390px)" }}>
+          <ChatTranscript liveAssistant={voice.liveAssistant} activeMode={voice.activeMode} />
+        </div>
+        <TextInput onSend={voice.interruptAndSend} disabled={voice.activeMode === "thinking"} />
+      </div>
+    </div>
+  );
+}
+
+function FeaturePage({ section }: { section: Exclude<Section, "chat"> }) {
+  const detail = SECTION_DETAILS[section];
+  const Icon = detail.icon as ComponentType<SVGProps<SVGSVGElement>>;
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <section className="panel-surface fade-rise p-6 sm:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-sm uppercase tracking-[0.24em] text-slate-400">{detail.eyebrow}</p>
+            <h2 className="mt-3 text-4xl font-semibold text-white">{detail.label}</h2>
+            <p className="mt-4 text-base leading-8 text-slate-300">{detail.description}</p>
+          </div>
+
+          <div className="panel-soft flex items-center gap-4 self-start px-5 py-4">
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-[20px]"
+              style={{
+                background: `linear-gradient(135deg, ${detail.aura}, ${detail.accent})`,
+                boxShadow: `0 18px 40px ${detail.shadow}`,
+              }}
+            >
+              <Icon className="h-6 w-6 text-white" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white">{detail.label}</p>
+              <p className="mt-1 text-sm text-slate-400">Dedicated page, more room, less compression.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel-surface fade-rise delay-1 p-5 sm:p-6 lg:p-7">{renderUtility(section)}</section>
+    </div>
+  );
+}
+
+function SideInfoPanel({
+  activeDetail,
+  activeMode,
+  autoListen,
+  onToggleAutoListen,
+  today,
+  userName,
+}: {
+  activeDetail: (typeof SECTION_DETAILS)[Section];
+  activeMode: VoiceMode;
+  autoListen: boolean;
+  onToggleAutoListen: () => void;
+  today: string;
+  userName: string;
+}) {
+  return (
+    <aside className="fade-rise delay-1 xl:pt-2">
+      <div className="grid gap-4 xl:sticky xl:top-5">
+        <div className="panel-soft p-5">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Today</p>
+          <p className="mt-3 text-sm leading-7 text-slate-200">{today}</p>
+        </div>
+
+        <div className="panel-soft p-5">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Current mode</p>
+          <div className="mt-4 flex items-center gap-3">
+            <span
+              className="h-3 w-3 rounded-full"
+              style={{ backgroundColor: activeDetail.accent, boxShadow: `0 0 20px ${activeDetail.shadow}` }}
+            />
+            <div>
+              <p className="text-sm font-semibold text-white">{activeDetail.label}</p>
+              <p className="mt-1 text-sm text-slate-400">{activeMode}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel-soft p-5">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Connected</p>
+          <p className="mt-3 text-sm font-semibold text-white">{userName}</p>
+          <button
+            type="button"
+            onClick={onToggleAutoListen}
+            className={cn(
+              "status-chip mt-4 cursor-pointer transition-colors",
+              autoListen && "!border-cyan-300/40 !bg-cyan-400/10 !text-cyan-200",
+            )}
+          >
+            {autoListen ? "auto-listen on" : "auto-listen off"}
+          </button>
+          <div className="mt-4">
+            <SignOutButton />
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function BackgroundEffects() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="starfield starfield-near absolute inset-0" />
+      <div className="starfield starfield-far absolute inset-0" />
+      <div className="absolute left-[-10rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[#6f35ff]/20 blur-[130px]" />
+      <div className="absolute right-[-8rem] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[#ef6cff]/14 blur-[120px]" />
+      <div className="absolute bottom-[-12rem] left-[14%] h-[30rem] w-[30rem] rounded-full bg-[#2fc4ff]/12 blur-[150px]" />
+      <div className="absolute bottom-[10%] right-[10%] h-[20rem] w-[20rem] rounded-full bg-[#7a5cff]/16 blur-[110px]" />
+    </div>
+  );
+}
+
+function CentralOrb({
+  mode,
+  level,
+  orbStyle,
+  onClick,
+}: {
+  mode: VoiceMode;
+  level: number;
+  orbStyle: CSSProperties;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={mode === "idle" ? "Talk to Vimi" : "Stop"}
+      className={cn(
+        "voice-orb relative h-56 w-56 cursor-pointer border-none outline-none transition-transform duration-300 active:scale-95 sm:h-64 sm:w-64",
+        mode === "idle" && "is-idle floating-orb",
+        mode === "listening" && "is-listening",
+        mode === "thinking" && "is-thinking",
+        mode === "speaking" && "is-speaking",
+      )}
+      style={mode === "idle" ? orbStyle : undefined}
+    >
+      <div className="absolute inset-[-10%] rounded-full border border-white/10 bg-white/[0.02] blur-md" />
+      <div className="absolute inset-[13%] rounded-full border border-white/18 bg-white/[0.05] backdrop-blur-sm" />
+      <div className="absolute inset-[28%] rounded-full border border-white/16 bg-white/[0.04]" />
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        {mode === "idle" && (
+          <svg viewBox="0 0 24 24" fill="none" className="h-14 w-14 text-white" strokeWidth="1.8" stroke="currentColor">
+            <rect x="9" y="3" width="6" height="12" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+          </svg>
+        )}
+        {mode === "listening" && <OrbAudioBars level={level} />}
+        {mode === "thinking" && (
+          <span className="flex gap-2">
+            <span className="voice-dot !h-2.5 !w-2.5" />
+            <span className="voice-dot !h-2.5 !w-2.5" />
+            <span className="voice-dot !h-2.5 !w-2.5" />
+          </span>
+        )}
+        {mode === "speaking" && <OrbSpeakingWave />}
+      </div>
+
+      {mode !== "idle" && (
+        <div
+          className={cn(
+            "absolute inset-0 rounded-full",
+            mode === "listening" && "animate-ping opacity-20 ring-4 ring-fuchsia-300/70",
+            mode === "speaking" && "animate-ping opacity-15 ring-4 ring-cyan-300/60",
+            mode === "thinking" && "animate-pulse opacity-20 ring-4 ring-violet-300/60",
+          )}
+          style={{ animationDuration: mode === "thinking" ? "1.4s" : "1.2s" }}
+        />
+      )}
+    </button>
+  );
+}
+
+function MiniOrbLauncher({
+  mode,
+  onClick,
+}: {
+  mode: VoiceMode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "fixed bottom-6 right-6 z-30 flex h-16 w-16 items-center justify-center rounded-full border border-white/14 text-white shadow-[0_18px_60px_rgba(39,20,90,0.45)] transition-all duration-300 hover:scale-105",
+        mode === "idle" ? "galaxy-orb-idle" : "voice-orb is-thinking",
+      )}
+      aria-label="Open Vimi"
+      title="Open Vimi"
+    >
+      <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7 text-white" strokeWidth="1.8" stroke="currentColor">
+        <rect x="9" y="3" width="6" height="12" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+function OrbAudioBars({ level }: { level: number }) {
+  const base = Math.max(0.18, level);
+  const heights = [0.45, 0.7, 1, 0.8, 0.55, 0.75, 0.4].map((factor) =>
+    Math.min(56, base * 60 * factor + 6),
+  );
+  return (
+    <span className="flex items-center gap-[3px]">
+      {heights.map((height, index) => (
+        <span key={index} className="voice-bar !w-[4px]" style={{ height: `${height}px` }} />
+      ))}
+    </span>
+  );
+}
+
+function OrbSpeakingWave() {
+  return (
+    <span className="flex items-center gap-[3px]">
+      {[0, 1, 2, 3, 4, 5, 6].map((index) => (
+        <span
+          key={index}
+          className="voice-bar !w-[4px]"
+          style={{ animation: `speakBar 0.9s ease-in-out ${index * 0.08}s infinite` }}
+        />
+      ))}
+      <style>{`
+        @keyframes speakBar {
+          0%, 100% { height: 8px; }
+          50% { height: 44px; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+function TextInput({ onSend, disabled }: { onSend: (text: string) => void; disabled: boolean }) {
+  const [input, setInput] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!input.trim() || disabled) return;
+    onSend(input.trim());
+    setInput("");
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 flex gap-3">
+      <input
+        className="surface-input flex-1 text-sm"
+        placeholder="Or type a message..."
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        disabled={disabled}
+      />
+      <button type="submit" disabled={!input.trim() || disabled} className="primary-button shrink-0 px-6">
+        Send
+      </button>
+    </form>
+  );
+}
+
+function renderUtility(section: Exclude<Section, "chat">) {
   if (section === "tasks") return <TasksSection />;
   if (section === "reminders") return <RemindersSection />;
   if (section === "payments") return <PaymentsSection />;
   if (section === "budgets") return <BudgetsSection />;
   if (section === "events") return <EventsSection />;
 
-  return <ChatSection />;
+  return null;
 }
