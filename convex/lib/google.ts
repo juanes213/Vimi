@@ -190,8 +190,8 @@ export async function deserializeTokenRecord(record: {
 }
 
 export type GoogleApiContext = {
-  runQuery: (ref: unknown, args: unknown) => Promise<any>;
-  runMutation: (ref: unknown, args: unknown) => Promise<any>;
+  runQuery: any;
+  runMutation: any;
 };
 
 export async function withGoogleAccessToken(

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
 import { Authenticated, Unauthenticated, useAction, useQuery } from "convex/react";
 import { Toaster, toast } from "sonner";
 import { api } from "../convex/_generated/api";
@@ -94,6 +94,7 @@ function AuthPage() {
 function Dashboard() {
   const [activePage, setActivePage] = useState<Section>("chat");
   const user = useQuery(api.auth.loggedInUser);
+  const chatMessages = useQuery(api.chat.listMessages) ?? [];
   const integrations = useQuery(api.integrations.listStatuses) ?? [];
   const pendingApprovals = useQuery(api.approvals.listPending) ?? [];
   const getGoogleConnectUrl = useAction(api.integrations.getGoogleConnectUrl);
@@ -110,6 +111,7 @@ function Dashboard() {
 
   const activeDetail = SECTION_DETAILS[activePage];
   const googleIntegration = integrations.find((integration) => integration.provider === "google");
+  const lastReminderToastId = useRef<string | null>(null);
   const orbStyle: CSSProperties = {
     background:
       "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(185,153,255,0.95) 26%, rgba(137,92,255,0.9) 52%, rgba(58,25,124,0.95) 100%)",
@@ -145,6 +147,19 @@ function Dashboard() {
     url.searchParams.delete("detail");
     window.history.replaceState({}, "", url.toString());
   }, []);
+
+  useEffect(() => {
+    const latestReminder = [...chatMessages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.parsedType === "reminder.delivery");
+
+    if (!latestReminder || latestReminder._id === lastReminderToastId.current) return;
+
+    lastReminderToastId.current = latestReminder._id;
+    toast(latestReminder.text, {
+      description: "Vimi reminder",
+    });
+  }, [chatMessages]);
 
   const handleConnectGoogle = async () => {
     const url = await getGoogleConnectUrl({ returnTo: window.location.href });

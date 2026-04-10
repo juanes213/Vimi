@@ -67,6 +67,10 @@ type PlannerOutput = {
   }>;
 };
 
+type ChatCommand = {
+  name: "clear_chat";
+};
+
 type ToolResult = {
   summary: string;
   result?: Record<string, unknown>;
@@ -144,6 +148,10 @@ Rules:
 - If the user asks to send an email, use gmail.sendEmail.
 - If the user asks to draft an email, use gmail.createDraft.
 - If the user asks to check inbox or search email, use gmail.searchInbox.
+- If the user asks for the latest, newest, or most recent email, use gmail.searchInbox with maxResults: 1.
+- For gmail.searchInbox, translate natural requests into Gmail search operators when useful:
+  from:, to:, subject:, has:attachment, older_than:, newer_than:, after:, before:, and quoted phrases.
+- Example: "the email Maria Fernando sent last month about the invoice" can become something like from:"Maria Fernando" "invoice" older_than:0d newer_than:30d.
 - If the user asks about calendar or scheduling, use calendar tools.
 - For calendar.createEvent and calendar.updateEvent, use ISO or RFC3339 datetimes. If the user gives only a start time, default the event to 1 hour.
 - If the user asks for a tiny reminder like "in 30m", use internal.createReminder with triggerAt in ISO format when possible.
@@ -170,14 +178,69 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
         resultSizeEstimate?: number;
       };
       const messages = payload.messages ?? [];
+      const detailedMessages =
+        messages.length === 0
+          ? []
+          : await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+              Promise.all(
+                messages.slice(0, Math.min(messages.length, 3)).map(async (message) => {
+                  const detailResponse = await googleApiFetch(
+                    token,
+                    gmailUrl(
+                      `/messages/${encodeURIComponent(message.id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+                    ),
+                  );
+                  if (!detailResponse.ok) {
+                    return {
+                      id: message.id,
+                      threadId: message.threadId,
+                    };
+                  }
+                  const detailPayload = (await detailResponse.json()) as {
+                    id?: string;
+                    threadId?: string;
+                    snippet?: string;
+                    internalDate?: string;
+                    payload?: {
+                      headers?: Array<{ name?: string; value?: string }>;
+                    };
+                  };
+                  const headers = detailPayload.payload?.headers ?? [];
+                  const getHeader = (name: string) =>
+                    headers.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value;
+
+                  return {
+                    id: detailPayload.id ?? message.id,
+                    threadId: detailPayload.threadId ?? message.threadId,
+                    subject: getHeader("Subject"),
+                    from: getHeader("From"),
+                    date: getHeader("Date"),
+                    snippet: detailPayload.snippet,
+                    internalDate: detailPayload.internalDate,
+                  };
+                }),
+              ),
+            );
+
+      const latestMessage = detailedMessages[0];
       return {
         summary:
-          messages.length > 0
-            ? `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`
-            : `I did not find emails for "${query}".`,
+          messages.length === 0
+            ? `I did not find emails for "${query}".`
+            : latestMessage?.subject || latestMessage?.from || latestMessage?.snippet
+              ? [
+                  `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`,
+                  latestMessage.from ? `Latest sender: ${latestMessage.from}.` : undefined,
+                  latestMessage.date ? `Date: ${latestMessage.date}.` : undefined,
+                  latestMessage.subject ? `Subject: ${latestMessage.subject}.` : undefined,
+                  latestMessage.snippet ? `Preview: ${latestMessage.snippet}.` : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              : `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`,
         result: {
           query,
-          messages,
+          messages: detailedMessages.length > 0 ? detailedMessages : messages,
           resultSizeEstimate: payload.resultSizeEstimate ?? messages.length,
         },
       };
@@ -618,6 +681,12 @@ async function handleUserMessage(
   text: string,
   source: SourceType,
 ) {
+  const command = detectChatCommand(text);
+  if (command?.name === "clear_chat") {
+    await ctx.runMutation(internal.chat.clearChatMessagesForUser, { userId });
+    return "";
+  }
+
   const sourceMessageId = await ctx.runMutation(internal.chat.insertUserMessage, {
     userId,
     text,
@@ -871,6 +940,14 @@ function detectApprovalDecision(text: string): ApprovalDecision | null {
   return null;
 }
 
+function detectChatCommand(text: string): ChatCommand | null {
+  const trimmed = text.trim().toLowerCase();
+  if (trimmed === "/cls") {
+    return { name: "clear_chat" };
+  }
+  return null;
+}
+
 function safeJsonParse<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;
   try {
@@ -1000,6 +1077,22 @@ export const saveAssistantMessage = internalMutation({
       relatedApprovalId: args.relatedApprovalId,
       relatedExecutionId: args.relatedExecutionId,
     });
+  },
+});
+
+export const clearChatMessagesForUser = internalMutation({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const messages = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
   },
 });
 

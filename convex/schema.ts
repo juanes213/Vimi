@@ -58,7 +58,8 @@ const applicationTables = {
     .index("by_userId", ["userId"])
     .index("by_userId_date", ["userId", "date"])
     .index("by_userId_status", ["userId", "status"])
-    .index("by_userId_triggerAt", ["userId", "triggerAt"]),
+    .index("by_userId_triggerAt", ["userId", "triggerAt"])
+    .index("by_deliveryStatus_triggerAt", ["deliveryStatus", "triggerAt"]),
 
   recurringPayments: defineTable({
     userId: v.id("users"),
