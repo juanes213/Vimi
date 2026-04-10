@@ -139,7 +139,16 @@ export async function fetchGoogleProfile(accessToken: string, idToken?: string) 
   });
 
   if (response.ok) {
-    return (await response.json()) as { id: string; email?: string; name?: string };
+    const payload = (await response.json()) as {
+      sub?: string;
+      email?: string;
+      name?: string;
+    };
+    return {
+      id: String(payload.sub ?? ""),
+      email: payload.email,
+      name: payload.name,
+    };
   }
 
   if (idToken) {
