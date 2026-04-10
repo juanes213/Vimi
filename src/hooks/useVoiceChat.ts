@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthToken } from "@convex-dev/auth/react";
 import { useElevenLabsTTS } from "./useElevenLabsTTS";
 import { useVoiceRecorder } from "./useVoiceRecorder";
 import { useVAD } from "./useVAD";
@@ -53,6 +54,7 @@ export function useVoiceChat() {
   const [mode, setMode] = useState<VoiceMode>("idle");
   const [liveAssistant, setLiveAssistant] = useState("");
   const [autoListen, setAutoListen] = useState(true);
+  const fetchAuthToken = useAuthToken();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -72,9 +74,13 @@ export function useVoiceChat() {
       abortRef.current = controller;
 
       try {
+        const token = await fetchAuthToken();
         const res = await fetch(`${CONVEX_HTTP_URL}/chat/stream`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ text: userText }),
           signal: controller.signal,
         });
@@ -135,7 +141,7 @@ export function useVoiceChat() {
         abortRef.current = null;
       }
     },
-    [tts],
+    [fetchAuthToken, tts],
   );
 
   const interruptAndSend = useCallback(

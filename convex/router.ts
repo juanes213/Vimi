@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { streamChat } from "./chat";
+import { googleOAuthCallback } from "./integrations";
 
 const http = httpRouter();
 
@@ -10,7 +11,6 @@ http.route({
   handler: streamChat,
 });
 
-// CORS preflight
 http.route({
   path: "/chat/stream",
   method: "OPTIONS",
@@ -19,11 +19,17 @@ http.route({
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
         "Access-Control-Max-Age": "86400",
       },
     });
   }),
+});
+
+http.route({
+  path: "/integrations/google/callback",
+  method: "GET",
+  handler: googleOAuthCallback,
 });
 
 export default http;

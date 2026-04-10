@@ -1,19 +1,416 @@
-import { v } from "convex/values";
-import { mutation, query, internalMutation, internalAction, httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import OpenAI from "openai";
+import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
+import {
+  httpAction,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import { requireAuthUserId } from "./lib/auth";
+import {
+  buildDraftEmailRaw,
+  calendarUrl,
+  gmailUrl,
+  googleApiFetch,
+  withGoogleAccessToken,
+} from "./lib/google";
 
 const openai = new OpenAI({
-  baseURL: process.env.CONVEX_OPENAI_BASE_URL,
-  apiKey: process.env.CONVEX_OPENAI_API_KEY,
+  baseURL: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
+  apiKey: process.env.GROQ_API_KEY ?? "missing-groq-api-key",
 });
+
+const PLANNER_MODEL = process.env.VIMI_PLANNER_MODEL ?? "openai/gpt-oss-120b";
+
+type ApprovalDecision = "approved" | "rejected";
+type ToolApprovalPolicy = "never" | "always" | "proactive_only";
+type SourceType = "voice" | "text" | "ui";
+
+type ToolName =
+  | "gmail.searchInbox"
+  | "gmail.readThread"
+  | "gmail.createDraft"
+  | "gmail.sendEmail"
+  | "calendar.listEvents"
+  | "calendar.createEvent"
+  | "calendar.updateEvent"
+  | "internal.createTask"
+  | "internal.createReminder"
+  | "internal.createEvent";
+
+type PlannerToolCall = {
+  name: ToolName;
+  args: Record<string, unknown>;
+  reason?: string;
+};
+
+type PlannerOutput = {
+  assistantReply: string;
+  toolCalls: PlannerToolCall[];
+  profileUpdate?: {
+    biography?: string;
+    preferences?: string[];
+    goals?: string[];
+    routines?: string[];
+    communicationStyle?: string;
+    timezone?: string;
+  };
+  memoryNotes?: Array<{
+    note: string;
+    tags?: string[];
+    confidence?: number;
+  }>;
+};
+
+type ToolResult = {
+  summary: string;
+  result?: Record<string, unknown>;
+};
+
+type ToolContext = {
+  runQuery: any;
+  runMutation: any;
+  runAction?: any;
+};
+
+type ToolDefinition = {
+  description: string;
+  risk: "low" | "medium" | "high";
+  approvalPolicy: ToolApprovalPolicy;
+  buildApprovalSummary: (args: Record<string, unknown>) => string;
+  execute: (
+    ctx: ToolContext,
+    userId: Id<"users">,
+    args: Record<string, unknown>,
+  ) => Promise<ToolResult>;
+};
+
+const APPROVE_PATTERNS = [
+  /^\s*yes\b/i,
+  /^\s*send it\b/i,
+  /^\s*do it\b/i,
+  /^\s*go ahead\b/i,
+  /^\s*create it\b/i,
+  /^\s*approve\b/i,
+];
+
+const REJECT_PATTERNS = [
+  /^\s*no\b/i,
+  /^\s*cancel\b/i,
+  /^\s*don't do that\b/i,
+  /^\s*do not do that\b/i,
+  /^\s*stop\b/i,
+  /^\s*reject\b/i,
+];
+
+const PLANNER_SYSTEM_PROMPT = `You are Vimi, a proactive personal life assistant.
+You help the user organize life, execute practical actions, and remember who they are over time.
+
+You must respond with valid JSON only using this exact shape:
+{
+  "assistantReply": "natural language, concise",
+  "toolCalls": [{ "name": "tool.name", "args": { ... }, "reason": "optional short reason" }],
+  "profileUpdate": {
+    "biography": "optional",
+    "preferences": ["optional"],
+    "goals": ["optional"],
+    "routines": ["optional"],
+    "communicationStyle": "optional",
+    "timezone": "optional"
+  },
+  "memoryNotes": [{ "note": "...", "tags": ["..."], "confidence": 0.8 }]
+}
+
+Rules:
+- Always include assistantReply and toolCalls.
+- toolCalls can be empty.
+- Only use these tools:
+  - gmail.searchInbox { "query": string, "maxResults"?: number }
+  - gmail.readThread { "threadId": string }
+  - gmail.createDraft { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
+  - gmail.sendEmail { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
+  - calendar.listEvents { "timeMin"?: string, "timeMax"?: string, "maxResults"?: number }
+  - calendar.createEvent { "title": string, "start": string, "end": string, "description"?: string }
+  - calendar.updateEvent { "eventId": string, "title"?: string, "start"?: string, "end"?: string, "description"?: string }
+  - internal.createTask { "title": string, "priority"?: "high" | "medium" | "low", "dueDate"?: string, "description"?: string }
+  - internal.createReminder { "text": string, "date"?: string, "time"?: string, "triggerAt"?: string, "deliveryChannels"?: ["in_app"] | ["in_app","gmail"] }
+  - internal.createEvent { "title": string, "date": string, "time"?: string }
+- If the user is sharing identity, preferences, routines, goals, career, likes/dislikes, capture that in profileUpdate and/or memoryNotes.
+- If the user asks to send an email, use gmail.sendEmail.
+- If the user asks to draft an email, use gmail.createDraft.
+- If the user asks to check inbox or search email, use gmail.searchInbox.
+- If the user asks about calendar or scheduling, use calendar tools.
+- If the user asks for a tiny reminder like "in 30m", use internal.createReminder with triggerAt in ISO format when possible.
+- Keep assistantReply brief, warm, and conversational.`;
+
+const toolRegistry: Record<ToolName, ToolDefinition> = {
+  "gmail.searchInbox": {
+    description: "Search Gmail inbox",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Search Gmail for "${String(args.query ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const query = String(args.query ?? "").trim();
+      const maxResults = Math.min(Number(args.maxResults ?? 5) || 5, 10);
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(
+          token,
+          `${gmailUrl("/messages")}?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+        ),
+      );
+      if (!response.ok) throw new Error(`Gmail search failed: ${response.status}`);
+      const payload = (await response.json()) as {
+        messages?: Array<{ id: string; threadId: string }>;
+        resultSizeEstimate?: number;
+      };
+      const messages = payload.messages ?? [];
+      return {
+        summary:
+          messages.length > 0
+            ? `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`
+            : `I did not find emails for "${query}".`,
+        result: {
+          query,
+          messages,
+          resultSizeEstimate: payload.resultSizeEstimate ?? messages.length,
+        },
+      };
+    },
+  },
+  "gmail.readThread": {
+    description: "Read a Gmail thread",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Read Gmail thread ${String(args.threadId ?? "")}`,
+    execute: async (ctx, userId, args) => {
+      const threadId = String(args.threadId ?? "").trim();
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, gmailUrl(`/threads/${encodeURIComponent(threadId)}?format=full`)),
+      );
+      if (!response.ok) throw new Error(`Gmail read thread failed: ${response.status}`);
+      const payload = await response.json();
+      return {
+        summary: `I pulled the Gmail thread ${threadId}.`,
+        result: payload as Record<string, unknown>,
+      };
+    },
+  },
+  "gmail.createDraft": {
+    description: "Create an email draft",
+    risk: "medium",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Create a draft email to ${String(args.to ?? "")}`,
+    execute: async (ctx, userId, args) => {
+      const raw = buildDraftEmailRaw({
+        to: String(args.to ?? ""),
+        subject: String(args.subject ?? ""),
+        body: String(args.body ?? ""),
+        cc: Array.isArray(args.cc) ? args.cc.map(String) : undefined,
+        bcc: Array.isArray(args.bcc) ? args.bcc.map(String) : undefined,
+      });
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, gmailUrl("/drafts"), {
+          method: "POST",
+          body: JSON.stringify({ message: { raw } }),
+        }),
+      );
+      if (!response.ok) throw new Error(`Gmail create draft failed: ${response.status}`);
+      const payload = await response.json();
+      return {
+        summary: `I created a Gmail draft for ${String(args.to ?? "the recipient")}.`,
+        result: payload as Record<string, unknown>,
+      };
+    },
+  },
+  "gmail.sendEmail": {
+    description: "Send an email via Gmail",
+    risk: "high",
+    approvalPolicy: "always",
+    buildApprovalSummary: (args) =>
+      `Send an email to ${String(args.to ?? "the recipient")} with subject "${String(args.subject ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const raw = buildDraftEmailRaw({
+        to: String(args.to ?? ""),
+        subject: String(args.subject ?? ""),
+        body: String(args.body ?? ""),
+        cc: Array.isArray(args.cc) ? args.cc.map(String) : undefined,
+        bcc: Array.isArray(args.bcc) ? args.bcc.map(String) : undefined,
+      });
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, gmailUrl("/messages/send"), {
+          method: "POST",
+          body: JSON.stringify({ raw }),
+        }),
+      );
+      if (!response.ok) throw new Error(`Gmail send failed: ${response.status}`);
+      const payload = await response.json();
+      return {
+        summary: `I sent the email to ${String(args.to ?? "the recipient")}.`,
+        result: payload as Record<string, unknown>,
+      };
+    },
+  },
+  "calendar.listEvents": {
+    description: "List calendar events",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: () => "List upcoming Google Calendar events",
+    execute: async (ctx, userId, args) => {
+      const params = new URLSearchParams();
+      params.set("singleEvents", "true");
+      params.set("orderBy", "startTime");
+      params.set("maxResults", String(Math.min(Number(args.maxResults ?? 10) || 10, 20)));
+      if (args.timeMin) params.set("timeMin", String(args.timeMin));
+      if (args.timeMax) params.set("timeMax", String(args.timeMax));
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, `${calendarUrl("/events")}?${params.toString()}`),
+      );
+      if (!response.ok) throw new Error(`Calendar list failed: ${response.status}`);
+      const payload = await response.json();
+      return {
+        summary: `I checked your calendar and found ${Array.isArray(payload.items) ? payload.items.length : 0} event(s).`,
+        result: payload as Record<string, unknown>,
+      };
+    },
+  },
+  "calendar.createEvent": {
+    description: "Create a calendar event",
+    risk: "medium",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Create a calendar event "${String(args.title ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const payload = {
+        summary: String(args.title ?? ""),
+        description: args.description ? String(args.description) : undefined,
+        start: { dateTime: String(args.start ?? "") },
+        end: { dateTime: String(args.end ?? "") },
+      };
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, calendarUrl("/events"), {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+      );
+      if (!response.ok) throw new Error(`Calendar create failed: ${response.status}`);
+      const created = (await response.json()) as { id?: string };
+      if (created.id) {
+        await ctx.runMutation(internal.chat.createEventFromCalendarTool, {
+          userId,
+          title: String(args.title ?? ""),
+          date: new Date(String(args.start ?? "")).getTime(),
+          time: extractTimeLabel(String(args.start ?? "")),
+          externalId: created.id,
+          externalSource: "google_calendar",
+        });
+      }
+      return {
+        summary: `I created the calendar event "${String(args.title ?? "")}".`,
+        result: created as Record<string, unknown>,
+      };
+    },
+  },
+  "calendar.updateEvent": {
+    description: "Update a calendar event",
+    risk: "medium",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Update calendar event ${String(args.eventId ?? "")}`,
+    execute: async (ctx, userId, args) => {
+      const eventId = String(args.eventId ?? "");
+      const payload: Record<string, unknown> = {};
+      if (args.title) payload.summary = String(args.title);
+      if (args.description) payload.description = String(args.description);
+      if (args.start) payload.start = { dateTime: String(args.start) };
+      if (args.end) payload.end = { dateTime: String(args.end) };
+      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
+        googleApiFetch(token, calendarUrl(`/events/${encodeURIComponent(eventId)}`), {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }),
+      );
+      if (!response.ok) throw new Error(`Calendar update failed: ${response.status}`);
+      const updated = await response.json();
+      return {
+        summary: "I updated the calendar event.",
+        result: updated as Record<string, unknown>,
+      };
+    },
+  },
+  "internal.createTask": {
+    description: "Create an internal Vimi task",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Create task "${String(args.title ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const id = await ctx.runMutation(internal.chat.createTaskFromAgent, {
+        userId,
+        title: String(args.title ?? ""),
+        description: args.description ? String(args.description) : undefined,
+        priority: args.priority ? String(args.priority) : undefined,
+        dueDate: args.dueDate ? new Date(String(args.dueDate)).getTime() : undefined,
+      });
+      return {
+        summary: `I created the task "${String(args.title ?? "")}".`,
+        result: { id },
+      };
+    },
+  },
+  "internal.createReminder": {
+    description: "Create an internal reminder or timer",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Create reminder "${String(args.text ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const triggerAt = args.triggerAt ? new Date(String(args.triggerAt)).getTime() : undefined;
+      const date = args.date
+        ? new Date(String(args.date)).getTime()
+        : triggerAt ?? Date.now() + 30 * 60 * 1000;
+      const id = await ctx.runMutation(internal.chat.createReminderFromAgent, {
+        userId,
+        text: String(args.text ?? ""),
+        date,
+        time: args.time ? String(args.time) : undefined,
+        triggerAt,
+        deliveryChannels: normalizeDeliveryChannels(args.deliveryChannels),
+      });
+      return {
+        summary: `I created the reminder "${String(args.text ?? "")}".`,
+        result: { id },
+      };
+    },
+  },
+  "internal.createEvent": {
+    description: "Create an internal event",
+    risk: "low",
+    approvalPolicy: "never",
+    buildApprovalSummary: (args) => `Create event "${String(args.title ?? "")}"`,
+    execute: async (ctx, userId, args) => {
+      const date = new Date(String(args.date ?? "")).getTime();
+      const id = await ctx.runMutation(internal.chat.createEventFromAgent, {
+        userId,
+        title: String(args.title ?? ""),
+        date,
+        time: args.time ? String(args.time) : undefined,
+      });
+      return {
+        summary: `I created the event "${String(args.title ?? "")}".`,
+        result: { id },
+      };
+    },
+  },
+};
 
 export const listMessages = query({
   args: {},
   handler: async (ctx) => {
+    const userId = await requireAuthUserId(ctx);
     return await ctx.db
       .query("chatMessages")
-      .withIndex("by_createdAt")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
       .order("asc")
       .collect();
   },
@@ -22,129 +419,580 @@ export const listMessages = query({
 export const sendMessage = mutation({
   args: { text: v.string() },
   handler: async (ctx, args) => {
-    await ctx.db.insert("chatMessages", {
+    const userId = await requireAuthUserId(ctx);
+    await ctx.scheduler.runAfter(0, internal.chat.processUserMessage, {
+      userId,
       text: args.text,
-      role: "user",
-      createdAt: Date.now(),
-    });
-    await ctx.scheduler.runAfter(0, internal.chat.generateResponse, {
-      userMessage: args.text,
     });
   },
 });
 
-export const generateResponse = internalAction({
-  args: { userMessage: v.string() },
-  handler: async (ctx, args) => {
-    const systemPrompt = `You are a smart productivity assistant. When the user mentions creating a task, reminder, event, budget, or recurring payment, extract the relevant info and respond helpfully.
+export const processUserMessage = internalAction({
+  args: {
+    userId: v.id("users"),
+    text: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await handleUserMessage(ctx, args.userId, args.text, "text");
+  },
+});
 
-    If the user wants to create something, respond with a JSON block like:
-    {"action": "create_task", "title": "...", "dueDate": "...", "priority": "high|medium|low"}
-    or {"action": "create_reminder", "text": "...", "date": "...", "time": "..."}
-    or {"action": "create_event", "title": "...", "date": "...", "time": "..."}
+export const streamChat = httpAction(async (ctx, request) => {
+  const userId = await getAuthUserId(ctx);
+  const origin = request.headers.get("origin") ?? "*";
 
-    Otherwise just respond naturally and helpfully about productivity, tasks, and planning.`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: args.userMessage },
-      ],
+  if (!userId) {
+    return new Response("Unauthorized", {
+      status: 401,
+      headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
     });
+  }
 
-    const content = response.choices[0].message.content ?? "I couldn't process that.";
+  const body = (await request.json().catch(() => null)) as { text?: string } | null;
+  const text = body?.text?.trim();
+  if (!text) {
+    return new Response("Missing text", {
+      status: 400,
+      headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }
 
-    let parsedType: string | undefined;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        parsedType = parsed.action;
-
-        if (parsed.action === "create_task" && parsed.title) {
-          await ctx.runMutation(internal.chat.createTaskFromChat, {
-            title: parsed.title,
-            priority: parsed.priority,
-          });
-        } else if (parsed.action === "create_reminder" && parsed.text) {
-          await ctx.runMutation(internal.chat.createReminderFromChat, {
-            text: parsed.text,
-            date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
-          });
-        } else if (parsed.action === "create_event" && parsed.title) {
-          await ctx.runMutation(internal.chat.createEventFromChat, {
-            title: parsed.title,
-            date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
-            time: parsed.time,
-          });
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      const sendEvent = (event: string, payload: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`));
+      };
+      void (async () => {
+        try {
+          const assistantText = await handleUserMessage(ctx, userId, text, "voice");
+          for (const piece of chunkText(assistantText)) {
+            sendEvent("delta", { text: piece });
+          }
+          sendEvent("done", { ok: true });
+        } catch (error) {
+          sendEvent("error", { message: String(error) });
+        } finally {
+          controller.close();
         }
-      }
-    } catch {
-      // not a JSON response, that's fine
+      })();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "Content-Type": "text/event-stream; charset=utf-8",
+    },
+  });
+});
+
+export const resolveApprovalAction = internalAction({
+  args: {
+    userId: v.id("users"),
+    approvalId: v.id("pendingApprovals"),
+    decision: v.union(v.literal("approved"), v.literal("rejected")),
+    source: v.union(v.literal("voice"), v.literal("text"), v.literal("ui")),
+  },
+  handler: async (ctx, args): Promise<{ assistantText: string }> => {
+    const approval: any = await ctx.runQuery(internal.chat.getPendingApprovalById, {
+      approvalId: args.approvalId,
+    });
+    if (!approval || approval.userId !== args.userId) {
+      return { assistantText: "I could not find that approval request." };
+    }
+    if (approval.status !== "pending") {
+      return { assistantText: "That request has already been resolved." };
     }
 
+    const execution = approval.toolExecutionId
+      ? await ctx.runQuery(internal.chat.getToolExecutionById, {
+          executionId: approval.toolExecutionId,
+        })
+      : null;
+
+    if (args.decision === "rejected") {
+      await ctx.runMutation(internal.approvals.updateApprovalStatus, {
+        approvalId: approval._id,
+        status: "rejected",
+      });
+      if (execution) {
+        await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+          executionId: execution._id,
+          status: "cancelled",
+          resultSummary: "User rejected the action.",
+        });
+      }
+      const assistantText: string = `Okay, I cancelled the request to ${approval.humanSummary.toLowerCase()}.`;
+      await ctx.runMutation(internal.chat.saveAssistantMessage, {
+        userId: args.userId,
+        text: assistantText,
+        relatedApprovalId: approval._id,
+        parsedType: approval.toolName,
+      });
+      return { assistantText };
+    }
+
+    await ctx.runMutation(internal.approvals.updateApprovalStatus, {
+      approvalId: approval._id,
+      status: "approved",
+    });
+
+    if (!execution) {
+      const assistantText = "I approved that request, but I could not find the execution context.";
+      await ctx.runMutation(internal.chat.saveAssistantMessage, {
+        userId: args.userId,
+        text: assistantText,
+        relatedApprovalId: approval._id,
+        parsedType: approval.toolName,
+      });
+      return { assistantText };
+    }
+
+    const toolArgs = safeJsonParse<Record<string, unknown>>(approval.toolArgsJson, {});
+    try {
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId: execution._id,
+        status: "running",
+      });
+      const result = await executeToolCall(ctx, args.userId, approval.toolName as ToolName, toolArgs);
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId: execution._id,
+        status: "completed",
+        resultSummary: result.summary,
+        resultJson: JSON.stringify(result.result ?? {}),
+      });
+      await ctx.runMutation(internal.approvals.updateApprovalStatus, {
+        approvalId: approval._id,
+        status: "resolved",
+      });
+      await ctx.runMutation(internal.chat.saveAssistantMessage, {
+        userId: args.userId,
+        text: result.summary,
+        relatedApprovalId: approval._id,
+        relatedExecutionId: execution._id,
+        parsedType: approval.toolName,
+      });
+      return { assistantText: result.summary };
+    } catch (error) {
+      const message = `I could not finish that action: ${String(error)}`;
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId: execution._id,
+        status: "failed",
+        error: String(error),
+      });
+      await ctx.runMutation(internal.chat.saveAssistantMessage, {
+        userId: args.userId,
+        text: message,
+        relatedApprovalId: approval._id,
+        relatedExecutionId: execution._id,
+        parsedType: approval.toolName,
+      });
+      return { assistantText: message };
+    }
+  },
+});
+
+async function handleUserMessage(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  text: string,
+  source: SourceType,
+) {
+  const sourceMessageId = await ctx.runMutation(internal.chat.insertUserMessage, {
+    userId,
+    text,
+  });
+
+  const pendingApprovals = await ctx.runQuery(internal.chat.getPendingApprovalsForUser, { userId });
+  const approvalDecision = detectApprovalDecision(text);
+
+  if (approvalDecision && pendingApprovals.length === 1) {
+    const resolved = await ctx.runAction?.(internal.chat.resolveApprovalAction, {
+      userId,
+      approvalId: pendingApprovals[0]._id,
+      decision: approvalDecision,
+      source,
+    });
+    return String(resolved?.assistantText ?? "Done.");
+  }
+
+  if (approvalDecision && pendingApprovals.length > 1) {
+    const assistantText =
+      "I have more than one approval waiting. Open the pending approvals list and choose the one you want me to resolve.";
     await ctx.runMutation(internal.chat.saveAssistantMessage, {
-      text: content,
-      parsedType,
+      userId,
+      text: assistantText,
+      parsedType: "approval.clarification",
+    });
+    return assistantText;
+  }
+
+  const plannerContext = await ctx.runQuery(internal.chat.getPlannerContext, { userId });
+  const planned = await planAssistantResponse(text, plannerContext);
+
+  await persistProfileUpdates(ctx, userId, planned.profileUpdate);
+  await persistMemoryNotes(ctx, userId, planned.memoryNotes, source);
+
+  const assistantFragments: string[] = [];
+  if (planned.assistantReply.trim()) {
+    assistantFragments.push(planned.assistantReply.trim());
+  }
+
+  for (const toolCall of planned.toolCalls) {
+    if (!(toolCall.name in toolRegistry)) continue;
+    const executionId = await ctx.runMutation(internal.chat.createToolExecutionRecord, {
+      userId,
+      toolName: toolCall.name,
+      toolArgsJson: JSON.stringify(toolCall.args ?? {}),
+      status: "pending",
+      sourceMessageId,
+    });
+
+    const definition = toolRegistry[toolCall.name];
+    if (definition.approvalPolicy === "always") {
+      const humanSummary = definition.buildApprovalSummary(toolCall.args);
+      const approvalId = await ctx.runMutation(internal.approvals.createPendingApproval, {
+        userId,
+        toolName: toolCall.name,
+        humanSummary,
+        toolArgsJson: JSON.stringify(toolCall.args ?? {}),
+        approvalMode: "hybrid",
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        requestedByMessageId: sourceMessageId,
+        toolExecutionId: executionId,
+      });
+      await ctx.runMutation(internal.chat.linkExecutionApproval, {
+        executionId,
+        approvalId,
+      });
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId,
+        status: "awaiting_approval",
+      });
+      assistantFragments.push(
+        `I'm ready to ${humanSummary.toLowerCase()}. Just say yes, or approve it from the side panel.`,
+      );
+      continue;
+    }
+
+    try {
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId,
+        status: "running",
+      });
+      const result = await executeToolCall(ctx, userId, toolCall.name, toolCall.args ?? {});
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId,
+        status: "completed",
+        resultSummary: result.summary,
+        resultJson: JSON.stringify(result.result ?? {}),
+      });
+      assistantFragments.push(result.summary);
+    } catch (error) {
+      const message = `I could not complete ${toolCall.name}: ${String(error)}`;
+      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+        executionId,
+        status: "failed",
+        error: String(error),
+      });
+      assistantFragments.push(message);
+    }
+  }
+
+  const assistantText = assistantFragments.filter(Boolean).join("\n\n").trim() || "I'm here.";
+  await ctx.runMutation(internal.chat.saveAssistantMessage, {
+    userId,
+    text: assistantText,
+    parsedType: planned.toolCalls[0]?.name,
+  });
+  return assistantText;
+}
+
+async function planAssistantResponse(
+  userText: string,
+  context: {
+    profile: unknown;
+    memories: unknown[];
+    integrations: unknown[];
+    recentMessages: unknown[];
+  },
+): Promise<PlannerOutput> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: PLANNER_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `${PLANNER_SYSTEM_PROMPT}\n\nCurrent context:\n${JSON.stringify(context)}`,
+        },
+        { role: "user", content: userText },
+      ],
+    });
+    const content = completion.choices[0]?.message?.content ?? "";
+    const parsed = safeJsonParse<PlannerOutput>(content, {
+      assistantReply: "I understood. I'll keep helping from here.",
+      toolCalls: [],
+    });
+    return {
+      assistantReply: typeof parsed.assistantReply === "string" ? parsed.assistantReply : "",
+      toolCalls: Array.isArray(parsed.toolCalls)
+        ? parsed.toolCalls.filter(
+            (toolCall): toolCall is PlannerToolCall =>
+              !!toolCall &&
+              typeof toolCall === "object" &&
+              typeof (toolCall as PlannerToolCall).name === "string" &&
+              typeof (toolCall as PlannerToolCall).args === "object",
+          )
+        : [],
+      profileUpdate:
+        parsed.profileUpdate && typeof parsed.profileUpdate === "object"
+          ? parsed.profileUpdate
+          : undefined,
+      memoryNotes: Array.isArray(parsed.memoryNotes) ? parsed.memoryNotes : undefined,
+    };
+  } catch (error) {
+    return {
+      assistantReply: `I had trouble planning that request right now: ${String(error)}`,
+      toolCalls: [],
+    };
+  }
+}
+
+async function persistProfileUpdates(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  profileUpdate: PlannerOutput["profileUpdate"],
+) {
+  if (!profileUpdate) return;
+  const hasContent =
+    !!profileUpdate.biography ||
+    !!profileUpdate.communicationStyle ||
+    !!profileUpdate.timezone ||
+    (profileUpdate.preferences?.length ?? 0) > 0 ||
+    (profileUpdate.goals?.length ?? 0) > 0 ||
+    (profileUpdate.routines?.length ?? 0) > 0;
+  if (!hasContent) return;
+
+  await ctx.runMutation(internal.chat.upsertProfileFromAgent, {
+    userId,
+    biography: profileUpdate.biography,
+    preferences: profileUpdate.preferences,
+    goals: profileUpdate.goals,
+    routines: profileUpdate.routines,
+    communicationStyle: profileUpdate.communicationStyle,
+    timezone: profileUpdate.timezone,
+  });
+}
+
+async function persistMemoryNotes(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  memoryNotes: PlannerOutput["memoryNotes"],
+  source: SourceType,
+) {
+  if (!memoryNotes?.length) return;
+  for (const memory of memoryNotes) {
+    if (!memory?.note?.trim()) continue;
+    await ctx.runMutation(internal.chat.addMemoryFromAgent, {
+      userId,
+      note: memory.note.trim(),
+      tags: Array.isArray(memory.tags) ? memory.tags.map(String) : [],
+      confidence: typeof memory.confidence === "number" ? memory.confidence : undefined,
+      source: source === "voice" ? "voice" : "chat",
+    });
+  }
+}
+
+async function executeToolCall(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  toolName: ToolName,
+  args: Record<string, unknown>,
+) {
+  const tool = toolRegistry[toolName];
+  if (!tool) throw new Error(`Unsupported tool: ${toolName}`);
+
+  try {
+    const result = await tool.execute(ctx, userId, args);
+    if (toolName.startsWith("gmail.") || toolName.startsWith("calendar.")) {
+      await ctx.runMutation(internal.integrations.saveIntegrationSync, {
+        userId,
+        provider: "google",
+        lastSyncAt: Date.now(),
+        status: "connected",
+      });
+    }
+    return result;
+  } catch (error) {
+    if (toolName.startsWith("gmail.") || toolName.startsWith("calendar.")) {
+      await ctx.runMutation(internal.integrations.saveIntegrationSync, {
+        userId,
+        provider: "google",
+        lastSyncAt: Date.now(),
+        lastError: String(error),
+        status: "error",
+      });
+    }
+    throw error;
+  }
+}
+
+function detectApprovalDecision(text: string): ApprovalDecision | null {
+  if (APPROVE_PATTERNS.some((pattern) => pattern.test(text))) return "approved";
+  if (REJECT_PATTERNS.some((pattern) => pattern.test(text))) return "rejected";
+  return null;
+}
+
+function safeJsonParse<T>(value: string | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function chunkText(text: string) {
+  const clean = text.trim();
+  if (!clean) return [] as string[];
+
+  const chunks: string[] = [];
+  let remaining = clean;
+  while (remaining.length > 0) {
+    if (remaining.length <= 120) {
+      chunks.push(remaining);
+      break;
+    }
+    const slice = remaining.slice(0, 120);
+    const splitAt = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf(", "), slice.lastIndexOf(" "));
+    const index = splitAt > 30 ? splitAt + 1 : 120;
+    chunks.push(remaining.slice(0, index));
+    remaining = remaining.slice(index).trimStart();
+  }
+  return chunks;
+}
+
+function normalizeDeliveryChannels(raw: unknown): Array<"in_app" | "gmail"> {
+  if (!Array.isArray(raw)) return ["in_app"];
+  const channels = raw
+    .map((value) => String(value))
+    .filter((value): value is "in_app" | "gmail" => value === "in_app" || value === "gmail");
+  return channels.length > 0 ? Array.from(new Set(channels)) : ["in_app"];
+}
+
+function extractTimeLabel(isoString: string) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export const insertUserMessage = internalMutation({
+  args: {
+    userId: v.id("users"),
+    text: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("chatMessages", {
+      userId: args.userId,
+      text: args.text,
+      createdAt: Date.now(),
+      role: "user",
     });
   },
 });
 
 export const saveAssistantMessage = internalMutation({
   args: {
+    userId: v.id("users"),
     text: v.string(),
     parsedType: v.optional(v.string()),
+    relatedApprovalId: v.optional(v.id("pendingApprovals")),
+    relatedExecutionId: v.optional(v.id("toolExecutions")),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("chatMessages", {
+    return await ctx.db.insert("chatMessages", {
+      userId: args.userId,
       text: args.text,
-      role: "assistant",
       createdAt: Date.now(),
+      role: "assistant",
       parsedType: args.parsedType,
+      relatedApprovalId: args.relatedApprovalId,
+      relatedExecutionId: args.relatedExecutionId,
     });
   },
 });
 
-export const createTaskFromChat = internalMutation({
+export const createTaskFromAgent = internalMutation({
   args: {
+    userId: v.id("users"),
     title: v.string(),
+    description: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
     priority: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("tasks", {
+    return await ctx.db.insert("tasks", {
+      userId: args.userId,
       title: args.title,
+      description: args.description,
+      dueDate: args.dueDate,
       priority: args.priority,
       status: "pending",
-      source: "chat",
       createdAt: Date.now(),
+      source: "agent",
     });
   },
 });
 
-export const createReminderFromChat = internalMutation({
+export const createReminderFromAgent = internalMutation({
   args: {
+    userId: v.id("users"),
     text: v.string(),
     date: v.number(),
+    time: v.optional(v.string()),
+    triggerAt: v.optional(v.number()),
+    deliveryChannels: v.optional(v.array(v.union(v.literal("in_app"), v.literal("gmail")))),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("reminders", {
+    return await ctx.db.insert("reminders", {
+      userId: args.userId,
       text: args.text,
       date: args.date,
+      time: args.time,
+      triggerAt: args.triggerAt ?? args.date,
+      deliveryChannels: args.deliveryChannels ?? ["in_app"],
+      deliveryStatus: "pending",
+      origin: "agent",
       status: "pending",
       createdAt: Date.now(),
     });
   },
 });
 
-export const createEventFromChat = internalMutation({
+export const createEventFromAgent = internalMutation({
   args: {
+    userId: v.id("users"),
     title: v.string(),
     date: v.number(),
     time: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("events", {
+    return await ctx.db.insert("events", {
+      userId: args.userId,
       title: args.title,
       date: args.date,
       time: args.time,
@@ -153,433 +1001,237 @@ export const createEventFromChat = internalMutation({
   },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Deterministic NLP helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-type ParsedIntent =
-  | { type: "reminder"; text: string; date: number; time?: string }
-  | { type: "recurringPayment"; name: string; amount?: number; frequency: string }
-  | { type: "budget"; category: string; amount?: number; month: string }
-  | { type: "task"; title: string; dueDate?: number; priority?: string }
-  | { type: "event"; title: string; date: number; time?: string }
-  | { type: "unknown" };
-
-/**
- * Resolve relative/named Spanish dates to a UTC timestamp (midnight local).
- * Supports: hoy, mañana, pasado mañana, weekday names, "el 15", ISO, DD/MM/YYYY.
- */
-function resolveDate(text: string, now: Date): number | undefined {
-  const lower = text.toLowerCase();
-
-  if (/pasado\s+ma[ñn]ana/.test(lower)) {
-    const d = new Date(now);
-    d.setDate(d.getDate() + 2);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }
-  if (/ma[ñn]ana/.test(lower)) {
-    const d = new Date(now);
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }
-  if (/\bhoy\b/.test(lower)) {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }
-
-  const weekdays: Record<string, number> = {
-    domingo: 0, lunes: 1, martes: 2,
-    "mi\u00e9rcoles": 3, miercoles: 3,
-    jueves: 4, viernes: 5,
-    "s\u00e1bado": 6, sabado: 6,
-  };
-  for (const [name, dow] of Object.entries(weekdays)) {
-    if (lower.includes(name)) {
-      const d = new Date(now);
-      const diff = (dow - d.getDay() + 7) % 7 || 7;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    }
-  }
-
-  // "el 15", "el día 25", "día 3"
-  const dayMatch = lower.match(/(?:el\s+d[ií]a\s+|el\s+|d[ií]a\s+)(\d{1,2})/);
-  if (dayMatch) {
-    const day = parseInt(dayMatch[1], 10);
-    const d = new Date(now);
-    d.setDate(day);
-    if (d.getTime() < now.getTime()) d.setMonth(d.getMonth() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }
-
-  // ISO: 2025-06-20
-  const isoMatch = lower.match(/(\d{4}-\d{2}-\d{2})/);
-  if (isoMatch) return new Date(isoMatch[1]).getTime();
-
-  // DD/MM/YYYY or DD-MM-YYYY
-  const dmyMatch = lower.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    return new Date(
-      `${dmyMatch[3]}-${dmyMatch[2].padStart(2, "0")}-${dmyMatch[1].padStart(2, "0")}`
-    ).getTime();
-  }
-
-  return undefined;
-}
-
-/** Extract HH:MM time string from text. */
-function resolveTime(text: string): string | undefined {
-  const colonMatch = text.match(/(\d{1,2})[:\.](\d{2})\s*(?:hs?|hrs?|horas?)?/i);
-  if (colonMatch) return `${colonMatch[1].padStart(2, "0")}:${colonMatch[2]}`;
-  const wordMatch = text.match(/a\s+las?\s+(\d{1,2})\s*(?:hs?|hrs?|horas?)?/i);
-  if (wordMatch) return `${wordMatch[1].padStart(2, "0")}:00`;
-  return undefined;
-}
-
-/** Extract the first monetary amount from text (supports $, comma decimals). */
-function resolveAmount(text: string): number | undefined {
-  const match = text.match(/\$?\s*(\d+(?:[.,]\d{1,2})?)/);
-  if (!match) return undefined;
-  return parseFloat(match[1].replace(",", "."));
-}
-
-/** Map text keywords to a budget category. */
-function resolveBudgetCategory(text: string): string {
-  const lower = text.toLowerCase();
-  const map: Array<[RegExp, string]> = [
-    [/comida|alimentaci[oó]n|supermercado|restaurante/, "Food"],
-    [/transporte|gasolina|nafta|bus|metro|uber/, "Transport"],
-    [/alquiler|renta|hipoteca|vivienda|casa/, "Housing"],
-    [/entretenimiento|ocio|cine|netflix|spotify/, "Entertainment"],
-    [/salud|m[eé]dico|farmacia|gym|gimnasio/, "Health"],
-    [/educaci[oó]n|curso|libro|universidad/, "Education"],
-    [/compras|ropa|tienda|shopping/, "Shopping"],
-    [/servicios|luz|agua|gas|internet|tel[eé]fono/, "Utilities"],
-  ];
-  for (const [re, cat] of map) {
-    if (re.test(lower)) return cat;
-  }
-  return "Other";
-}
-
-/** Detect task priority from text. */
-function resolvePriority(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  if (/urgente|importante|alta|high|cr[ií]tico/.test(lower)) return "high";
-  if (/baja|low|cuando\s+pueda/.test(lower)) return "low";
-  if (/media|medium|normal/.test(lower)) return "medium";
-  return undefined;
-}
-
-/**
- * Core deterministic intent parser.
- *
- * Architecture note: this function is intentionally isolated and returns a
- * plain `ParsedIntent` value. To integrate AI later, replace or wrap this
- * function — the rest of `parseMessageAndCreateEntities` stays unchanged.
- */
-function parseIntent(text: string, now: Date): ParsedIntent {
-  const lower = text.toLowerCase();
-
-  // ── REMINDER ──────────────────────────────────────────────────────────────
-  if (/recu[eé]rdame|recordatorio/.test(lower)) {
-    const date = resolveDate(text, now) ?? now.getTime() + 86400000;
-    const time = resolveTime(text);
-    const body = text
-      .replace(/recu[eé]rdame\s*(que\s*)?/i, "")
-      .replace(/pasado\s+ma[ñn]ana|ma[ñn]ana|\bhoy\b/gi, "")
-      .replace(/a\s+las?\s+\d{1,2}(?:[:\.]?\d{2})?\s*(?:hs?|hrs?|horas?)?/gi, "")
-      .replace(/\d{1,2}[:\.]?\d{2}\s*(?:hs?|hrs?|horas?)?/gi, "")
-      .trim()
-      .replace(/\s{2,}/g, " ");
-    return { type: "reminder", text: body || text, date, time };
-  }
-
-  // ── RECURRING PAYMENT ─────────────────────────────────────────────────────
-  if (/todos\s+los\s+meses|mensual|cada\s+mes|pago\s+fijo|suscripci[oó]n|cuota/.test(lower)) {
-    const amount = resolveAmount(text);
-    let frequency = "monthly";
-    if (/semanal|cada\s+semana|todas\s+las\s+semanas/.test(lower)) frequency = "weekly";
-    if (/anual|cada\s+a[ñn]o|todos\s+los\s+a[ñn]os/.test(lower)) frequency = "yearly";
-    if (/quincenal|cada\s+quince/.test(lower)) frequency = "biweekly";
-    const name = text
-      .replace(/\$?\s*\d+(?:[.,]\d{1,2})?/g, "")
-      .replace(/todos\s+los\s+meses|mensual|cada\s+mes|pago\s+fijo|suscripci[oó]n|cuota/gi, "")
-      .replace(/semanal|cada\s+semana|anual|cada\s+a[ñn]o|quincenal/gi, "")
-      .trim()
-      .replace(/\s{2,}/g, " ") || text;
-    return { type: "recurringPayment", name, amount, frequency };
-  }
-
-  // ── BUDGET ────────────────────────────────────────────────────────────────
-  if (/presupuesto|budget/.test(lower)) {
-    const amount = resolveAmount(text);
-    const category = resolveBudgetCategory(text);
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    return { type: "budget", category, amount, month };
-  }
-
-  // ── EVENT ─────────────────────────────────────────────────────────────────
-  if (/evento|reuni[oó]n|cita|cumplea[ñn]os|fiesta|conferencia/.test(lower)) {
-    const date = resolveDate(text, now) ?? now.getTime() + 86400000;
-    const time = resolveTime(text);
-    const title = text
-      .replace(/evento|reuni[oó]n|cita|cumplea[ñn]os|fiesta|conferencia/gi, "")
-      .replace(/pasado\s+ma[ñn]ana|ma[ñn]ana|\bhoy\b/gi, "")
-      .replace(/a\s+las?\s+\d{1,2}(?:[:\.]?\d{2})?\s*(?:hs?|hrs?|horas?)?/gi, "")
-      .trim()
-      .replace(/\s{2,}/g, " ") || text;
-    return { type: "event", title, date, time };
-  }
-
-  // ── TASK ──────────────────────────────────────────────────────────────────
-  if (/tarea|hacer|completar|terminar|entregar|revisar|llamar|enviar|escribir/.test(lower)) {
-    const dueDate = resolveDate(text, now);
-    const priority = resolvePriority(text);
-    const title = text
-      .replace(/tarea[:\s]*/gi, "")
-      .replace(/pasado\s+ma[ñn]ana|ma[ñn]ana|\bhoy\b/gi, "")
-      .trim()
-      .replace(/\s{2,}/g, " ") || text;
-    return { type: "task", title, dueDate, priority };
-  }
-
-  return { type: "unknown" };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Public mutation
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const parseMessageAndCreateEntities = mutation({
-  args: { text: v.string() },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{ detectedType: string; entityId?: string }> => {
-    const now = new Date();
-
-    // 1. Persist the user message
-    await ctx.db.insert("chatMessages", {
-      text: args.text,
-      role: "user",
-      createdAt: Date.now(),
-    });
-
-    // 2. Detect intent
-    // ┌─ AI integration point ──────────────────────────────────────────────┐
-    // │ Replace `parseIntent(args.text, now)` with an `ctx.runAction` call  │
-    // │ that calls an AI model and returns the same `ParsedIntent` shape.   │
-    // └─────────────────────────────────────────────────────────────────────┘
-    const intent = parseIntent(args.text, now);
-
-    let entityId: string | undefined;
-    let replyText = "";
-
-    // 3. Create entity
-    if (intent.type === "reminder") {
-      entityId = await ctx.db.insert("reminders", {
-        text: intent.text,
-        date: intent.date,
-        time: intent.time,
-        status: "pending",
-        createdAt: Date.now(),
-      });
-      replyText = `✅ Recordatorio creado: "${intent.text}"`;
-    } else if (intent.type === "recurringPayment") {
-      entityId = await ctx.db.insert("recurringPayments", {
-        name: intent.name,
-        amount: intent.amount ?? 0,
-        frequency: intent.frequency,
-        nextDueDate: now.getTime(),
-        status: "active",
-        createdAt: Date.now(),
-      });
-      replyText =
-        `✅ Pago recurrente creado: "${intent.name}"` +
-        ` (${intent.frequency}${intent.amount ? ` · $${intent.amount}` : ""})`;
-    } else if (intent.type === "budget") {
-      entityId = await ctx.db.insert("budgets", {
-        category: intent.category,
-        amount: intent.amount ?? 0,
-        month: intent.month,
-        createdAt: Date.now(),
-      });
-      replyText =
-        `✅ Presupuesto creado: ${intent.category}` +
-        `${intent.amount ? ` · $${intent.amount}` : ""} (${intent.month})`;
-    } else if (intent.type === "task") {
-      entityId = await ctx.db.insert("tasks", {
-        title: intent.title,
-        dueDate: intent.dueDate,
-        priority: intent.priority,
-        status: "pending",
-        source: "chat",
-        createdAt: Date.now(),
-      });
-      replyText = `✅ Tarea creada: "${intent.title}"`;
-    } else if (intent.type === "event") {
-      entityId = await ctx.db.insert("events", {
-        title: intent.title,
-        date: intent.date,
-        time: intent.time,
-        createdAt: Date.now(),
-      });
-      replyText = `✅ Evento creado: "${intent.title}"`;
-    } else {
-      replyText =
-        "No detecté ninguna acción específica. " +
-        "Puedes decirme: recuérdame, tarea, evento, presupuesto o pago mensual.";
-    }
-
-    // 4. Persist assistant reply
-    await ctx.db.insert("chatMessages", {
-      text: replyText,
-      role: "assistant",
-      createdAt: Date.now() + 1,
-      parsedType:
-        intent.type !== "unknown" ? `create_${intent.type}` : undefined,
-    });
-
-    return { detectedType: intent.type, entityId };
+export const createEventFromCalendarTool = internalMutation({
+  args: {
+    userId: v.id("users"),
+    title: v.string(),
+    date: v.number(),
+    time: v.optional(v.string()),
+    externalId: v.string(),
+    externalSource: v.string(),
   },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Streaming voz: HTTP action con Server-Sent Events
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const insertUserMessage = internalMutation({
-  args: { text: v.string() },
   handler: async (ctx, args) => {
-    await ctx.db.insert("chatMessages", {
-      text: args.text,
-      role: "user",
+    const existing = await ctx.db
+      .query("events")
+      .withIndex("by_userId_date", (q) => q.eq("userId", args.userId))
+      .collect();
+    const duplicate = existing.find(
+      (event) => event.externalId === args.externalId && event.externalSource === args.externalSource,
+    );
+    if (duplicate) return duplicate._id;
+
+    return await ctx.db.insert("events", {
+      userId: args.userId,
+      title: args.title,
+      date: args.date,
+      time: args.time,
+      externalId: args.externalId,
+      externalSource: args.externalSource,
       createdAt: Date.now(),
     });
   },
 });
 
-const VIMI_SYSTEM_PROMPT = `You are Vimi, a warm and close life assistant that speaks English.
-Your tone is human, brief, and conversational — you are responding by voice, not by text,
-so avoid bullet lists, markdown, asterisks, or any formatting. Speak like a caring friend
-and consultant who helps the person organize their ideas and execute what they decide.
+export const createToolExecutionRecord = internalMutation({
+  args: {
+    userId: v.id("users"),
+    toolName: v.string(),
+    toolArgsJson: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("awaiting_approval"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    sourceMessageId: v.optional(v.id("chatMessages")),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("toolExecutions", {
+      userId: args.userId,
+      toolName: args.toolName,
+      toolArgsJson: args.toolArgsJson,
+      status: args.status,
+      createdAt: Date.now(),
+      sourceMessageId: args.sourceMessageId,
+    });
+  },
+});
 
-When the user mentions creating a task, reminder, event, budget, or recurring payment,
-at the END of your response add a JSON block on a separate line with this shape (only one):
-{"action": "create_task", "title": "...", "priority": "high|medium|low"}
-{"action": "create_reminder", "text": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}
-{"action": "create_event", "title": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}
+export const linkExecutionApproval = internalMutation({
+  args: {
+    executionId: v.id("toolExecutions"),
+    approvalId: v.id("pendingApprovals"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.executionId, {
+      pendingApprovalId: args.approvalId,
+    });
+  },
+});
 
-The JSON block will not be spoken aloud — it is stripped before being sent to TTS.
-Always respond first with natural language, then the JSON if applicable. Be brief: 1-3 sentences.`;
+export const updateToolExecutionStatus = internalMutation({
+  args: {
+    executionId: v.id("toolExecutions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("awaiting_approval"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    resultSummary: v.optional(v.string()),
+    resultJson: v.optional(v.string()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.executionId, {
+      status: args.status,
+      resultSummary: args.resultSummary,
+      resultJson: args.resultJson,
+      error: args.error,
+      completedAt:
+        args.status === "completed" || args.status === "failed" || args.status === "cancelled"
+          ? Date.now()
+          : undefined,
+    });
+  },
+});
 
-/**
- * HTTP streaming endpoint para voz. Recibe { text } por POST, guarda el mensaje
- * del usuario, llama a OpenAI con stream: true, y devuelve un stream SSE con
- * los deltas de texto. Al finalizar guarda el mensaje del assistant y procesa
- * acciones (crear tarea/recordatorio/evento).
- */
-export const streamChat = httpAction(async (ctx, request) => {
-  const { text } = (await request.json()) as { text?: string };
-  if (!text || !text.trim()) {
-    return new Response("missing text", { status: 400 });
-  }
+export const getPendingApprovalsForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("pendingApprovals")
+      .withIndex("by_userId_status_createdAt", (q) => q.eq("userId", args.userId).eq("status", "pending"))
+      .order("desc")
+      .collect();
+  },
+});
 
-  await ctx.runMutation(internal.chat.insertUserMessage, { text });
+export const getPendingApprovalById = internalQuery({
+  args: { approvalId: v.id("pendingApprovals") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.approvalId);
+  },
+});
 
-  const openai = new OpenAI({
-    baseURL: process.env.CONVEX_OPENAI_BASE_URL,
-    apiKey: process.env.CONVEX_OPENAI_API_KEY,
-  });
+export const getToolExecutionById = internalQuery({
+  args: { executionId: v.id("toolExecutions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.executionId);
+  },
+});
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: string, data: unknown) => {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-        );
-      };
+export const getPlannerContext = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const [profile, recentMessages, memories, integrations] = await Promise.all([
+      ctx.db
+        .query("userProfiles")
+        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+        .unique(),
+      ctx.db
+        .query("chatMessages")
+        .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .take(12),
+      ctx.db
+        .query("userMemories")
+        .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+        .order("desc")
+        .take(10),
+      ctx.db
+        .query("integrations")
+        .withIndex("by_userId_status", (q) => q.eq("userId", args.userId))
+        .collect(),
+    ]);
 
-      let full = "";
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4.1-nano",
-          stream: true,
-          messages: [
-            { role: "system", content: VIMI_SYSTEM_PROMPT },
-            { role: "user", content: text },
-          ],
-        });
+    return {
+      profile,
+      recentMessages: [...recentMessages].reverse().map((message) => ({
+        role: message.role,
+        text: message.text,
+        parsedType: message.parsedType,
+      })),
+      memories: memories.map((memory) => ({
+        note: memory.note,
+        tags: memory.tags,
+        confidence: memory.confidence,
+      })),
+      integrations: integrations.map((integration) => ({
+        provider: integration.provider,
+        status: integration.status,
+        accountLabel: integration.accountLabel,
+        lastSyncAt: integration.lastSyncAt,
+      })),
+    };
+  },
+});
 
-        for await (const chunk of completion) {
-          const delta = chunk.choices[0]?.delta?.content ?? "";
-          if (delta) {
-            full += delta;
-            send("delta", { text: delta });
-          }
-        }
-      } catch (err) {
-        console.error("[streamChat] openai error", err);
-        send("error", { message: String(err) });
-      }
+export const upsertProfileFromAgent = internalMutation({
+  args: {
+    userId: v.id("users"),
+    biography: v.optional(v.string()),
+    preferences: v.optional(v.array(v.string())),
+    goals: v.optional(v.array(v.string())),
+    routines: v.optional(v.array(v.string())),
+    communicationStyle: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .unique();
 
-      // Extraer y limpiar JSON de acción
-      let parsedType: string | undefined;
-      let spokenText = full;
-      const jsonMatch = full.match(/\{[\s\S]*"action"[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          parsedType = parsed.action;
-          spokenText = full.replace(jsonMatch[0], "").trim();
+    const mergeList = (current: string[] = [], incoming: string[] = []) =>
+      Array.from(new Set([...current, ...incoming].map((value) => value.trim()).filter(Boolean)));
 
-          if (parsed.action === "create_task" && parsed.title) {
-            await ctx.runMutation(internal.chat.createTaskFromChat, {
-              title: parsed.title,
-              priority: parsed.priority,
-            });
-          } else if (parsed.action === "create_reminder" && parsed.text) {
-            await ctx.runMutation(internal.chat.createReminderFromChat, {
-              text: parsed.text,
-              date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
-            });
-          } else if (parsed.action === "create_event" && parsed.title) {
-            await ctx.runMutation(internal.chat.createEventFromChat, {
-              title: parsed.title,
-              date: parsed.date ? new Date(parsed.date).getTime() : Date.now() + 86400000,
-              time: parsed.time,
-            });
-          }
-        } catch {
-          /* no era JSON válido */
-        }
-      }
-
-      await ctx.runMutation(internal.chat.saveAssistantMessage, {
-        text: spokenText || full || "(sin respuesta)",
-        parsedType,
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        biography: args.biography ?? existing.biography,
+        preferences: mergeList(existing.preferences, args.preferences ?? []),
+        goals: mergeList(existing.goals, args.goals ?? []),
+        routines: mergeList(existing.routines, args.routines ?? []),
+        communicationStyle: args.communicationStyle ?? existing.communicationStyle,
+        timezone: args.timezone ?? existing.timezone,
+        updatedAt: Date.now(),
       });
+      return existing._id;
+    }
 
-      send("done", { parsedType });
-      controller.close();
-    },
-  });
+    return await ctx.db.insert("userProfiles", {
+      userId: args.userId,
+      biography: args.biography,
+      preferences: mergeList([], args.preferences ?? []),
+      goals: mergeList([], args.goals ?? []),
+      routines: mergeList([], args.routines ?? []),
+      communicationStyle: args.communicationStyle,
+      timezone: args.timezone,
+      updatedAt: Date.now(),
+    });
+  },
+});
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  });
+export const addMemoryFromAgent = internalMutation({
+  args: {
+    userId: v.id("users"),
+    note: v.string(),
+    tags: v.array(v.string()),
+    confidence: v.optional(v.number()),
+    source: v.union(v.literal("chat"), v.literal("voice"), v.literal("manual"), v.literal("agent")),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("userMemories", {
+      userId: args.userId,
+      note: args.note,
+      tags: args.tags,
+      confidence: args.confidence,
+      source: args.source,
+      createdAt: Date.now(),
+    });
+  },
 });

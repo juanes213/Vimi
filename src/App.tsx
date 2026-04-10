@@ -1,6 +1,6 @@
-import { useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
-import { Toaster } from "sonner";
+import { useEffect, useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
+import { Authenticated, Unauthenticated, useAction, useQuery } from "convex/react";
+import { Toaster, toast } from "sonner";
 import { api } from "../convex/_generated/api";
 import { BudgetsSection } from "./components/BudgetsSection";
 import { ChatTranscript } from "./components/ChatSection";
@@ -94,6 +94,12 @@ function AuthPage() {
 function Dashboard() {
   const [activePage, setActivePage] = useState<Section>("chat");
   const user = useQuery(api.auth.loggedInUser);
+  const integrations = useQuery(api.integrations.listStatuses) ?? [];
+  const pendingApprovals = useQuery(api.approvals.listPending) ?? [];
+  const getGoogleConnectUrl = useAction(api.integrations.getGoogleConnectUrl);
+  const disconnectGoogle = useAction(api.integrations.disconnectGoogle);
+  const approvePendingApproval = useAction(api.approvals.approvePendingApproval);
+  const rejectPendingApproval = useAction(api.approvals.rejectPendingApproval);
   const userName = user?.email?.split("@")[0] ?? "you";
   const voice = useVoiceChat();
   const today = new Intl.DateTimeFormat("en-US", {
@@ -103,6 +109,7 @@ function Dashboard() {
   }).format(new Date());
 
   const activeDetail = SECTION_DETAILS[activePage];
+  const googleIntegration = integrations.find((integration) => integration.provider === "google");
   const orbStyle: CSSProperties = {
     background:
       "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(185,153,255,0.95) 26%, rgba(137,92,255,0.9) 52%, rgba(58,25,124,0.95) 100%)",
@@ -120,6 +127,43 @@ function Dashboard() {
       return;
     }
     voice.stopAll();
+  };
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const googleStatus = url.searchParams.get("google");
+    if (!googleStatus) return;
+
+    if (googleStatus === "connected") {
+      toast.success("Google connected");
+    } else {
+      toast.error(url.searchParams.get("detail") ?? "Google connection failed");
+    }
+
+    url.searchParams.delete("google");
+    url.searchParams.delete("reason");
+    url.searchParams.delete("detail");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
+
+  const handleConnectGoogle = async () => {
+    const url = await getGoogleConnectUrl({ returnTo: window.location.href });
+    window.location.href = url;
+  };
+
+  const handleDisconnectGoogle = async () => {
+    await disconnectGoogle({});
+    toast.success("Google disconnected");
+  };
+
+  const handleApprove = async (approvalId: string) => {
+    const result = await approvePendingApproval({ approvalId: approvalId as never });
+    toast.success(result.assistantText ?? "Approved");
+  };
+
+  const handleReject = async (approvalId: string) => {
+    const result = await rejectPendingApproval({ approvalId: approvalId as never });
+    toast.success(result.assistantText ?? "Rejected");
   };
 
   return (
@@ -186,6 +230,12 @@ function Dashboard() {
             onToggleAutoListen={() => voice.setAutoListen((value) => !value)}
             today={today}
             userName={userName}
+            googleIntegration={googleIntegration}
+            pendingApprovals={pendingApprovals}
+            onConnectGoogle={handleConnectGoogle}
+            onDisconnectGoogle={handleDisconnectGoogle}
+            onApprove={handleApprove}
+            onReject={handleReject}
           />
         </main>
 
@@ -288,6 +338,12 @@ function SideInfoPanel({
   onToggleAutoListen,
   today,
   userName,
+  googleIntegration,
+  pendingApprovals,
+  onConnectGoogle,
+  onDisconnectGoogle,
+  onApprove,
+  onReject,
 }: {
   activeDetail: (typeof SECTION_DETAILS)[Section];
   activeMode: VoiceMode;
@@ -295,6 +351,20 @@ function SideInfoPanel({
   onToggleAutoListen: () => void;
   today: string;
   userName: string;
+  googleIntegration?: {
+    accountLabel?: string;
+    status: string;
+    lastSyncAt?: number;
+  };
+  pendingApprovals: Array<{
+    _id: string;
+    humanSummary: string;
+    toolName: string;
+  }>;
+  onConnectGoogle: () => void;
+  onDisconnectGoogle: () => void;
+  onApprove: (approvalId: string) => void;
+  onReject: (approvalId: string) => void;
 }) {
   return (
     <aside className="fade-rise delay-1 xl:pt-2">
@@ -334,6 +404,67 @@ function SideInfoPanel({
           <div className="mt-4">
             <SignOutButton />
           </div>
+        </div>
+
+        <div className="panel-soft p-5">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Google</p>
+          <p className="mt-3 text-sm font-semibold text-white">
+            {googleIntegration?.status === "connected"
+              ? googleIntegration.accountLabel ?? "Connected"
+              : "Not connected"}
+          </p>
+          <p className="mt-1 text-sm text-slate-400">
+            {googleIntegration?.status === "connected"
+              ? "Gmail and Calendar are available for Vimi."
+              : "Connect Google so Vimi can read Gmail and manage Calendar."}
+          </p>
+          <button
+            type="button"
+            onClick={googleIntegration?.status === "connected" ? onDisconnectGoogle : onConnectGoogle}
+            className="secondary-button mt-4 w-full justify-center text-sm"
+          >
+            {googleIntegration?.status === "connected" ? "Disconnect Google" : "Connect Google"}
+          </button>
+        </div>
+
+        <div className="panel-soft p-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Pending approvals</p>
+            <span className="status-chip">{pendingApprovals.length}</span>
+          </div>
+
+          {pendingApprovals.length === 0 ? (
+            <p className="mt-4 text-sm leading-6 text-slate-400">
+              When Vimi needs approval for something high-risk, it will appear here.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {pendingApprovals.slice(0, 4).map((approval) => (
+                <div key={approval._id} className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-sm font-medium text-white">{approval.humanSummary}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    {approval.toolName}
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onApprove(approval._id)}
+                      className="primary-button flex-1 justify-center !px-3 !py-2 text-xs"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onReject(approval._id)}
+                      className="secondary-button flex-1 justify-center !px-3 !py-2 text-xs"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </aside>
