@@ -152,6 +152,8 @@ Rules:
 - For gmail.searchInbox, translate natural requests into Gmail search operators when useful:
   from:, to:, subject:, has:attachment, older_than:, newer_than:, after:, before:, and quoted phrases.
 - Example: "the email Maria Fernando sent last month about the invoice" can become something like from:"Maria Fernando" "invoice" older_than:0d newer_than:30d.
+- gmail.searchInbox already returns sender, subject, date, snippet, and body preview for top matches, so prefer it for "find/show/tell me what this email says" requests.
+- Use gmail.readThread only when you already have an explicit Gmail thread/message id.
 - If the user asks about calendar or scheduling, use calendar tools.
 - For calendar.createEvent and calendar.updateEvent, use ISO or RFC3339 datetimes. If the user gives only a start time, default the event to 1 hour.
 - If the user asks for a tiny reminder like "in 30m", use internal.createReminder with triggerAt in ISO format when possible.
@@ -217,6 +219,7 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
                     date: getHeader("Date"),
                     snippet: detailPayload.snippet,
                     internalDate: detailPayload.internalDate,
+                    bodyPreview: extractEmailBodyPreview(detailPayload),
                   };
                 }),
               ),
@@ -234,6 +237,7 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
                   latestMessage.date ? `Date: ${latestMessage.date}.` : undefined,
                   latestMessage.subject ? `Subject: ${latestMessage.subject}.` : undefined,
                   latestMessage.snippet ? `Preview: ${latestMessage.snippet}.` : undefined,
+                  latestMessage.bodyPreview ? `Body: ${latestMessage.bodyPreview}.` : undefined,
                 ]
                   .filter(Boolean)
                   .join(" ")
@@ -253,13 +257,38 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
     buildApprovalSummary: (args) => `Read Gmail thread ${String(args.threadId ?? "")}`,
     execute: async (ctx, userId, args) => {
       const threadId = String(args.threadId ?? "").trim();
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, gmailUrl(`/threads/${encodeURIComponent(threadId)}?format=full`)),
-      );
-      if (!response.ok) throw new Error(`Gmail read thread failed: ${response.status}`);
-      const payload = await response.json();
+      const payload = await withGoogleAccessToken(ctx, internal, userId, async (token) => {
+        const threadResponse = await googleApiFetch(
+          token,
+          gmailUrl(`/threads/${encodeURIComponent(threadId)}?format=full`),
+        );
+        if (threadResponse.ok) {
+          return await threadResponse.json();
+        }
+
+        const messageResponse = await googleApiFetch(
+          token,
+          gmailUrl(`/messages/${encodeURIComponent(threadId)}?format=full`),
+        );
+        if (!messageResponse.ok) {
+          throw new Error(`Gmail read thread failed: ${threadResponse.status}`);
+        }
+        return await messageResponse.json();
+      });
+
+      const threadMessages = Array.isArray((payload as { messages?: unknown[] }).messages)
+        ? ((payload as { messages: Array<Record<string, unknown>> }).messages ?? [])
+        : [payload as Record<string, unknown>];
+      const latestMessage = threadMessages.at(-1);
+      const bodyPreview = latestMessage ? extractEmailBodyPreview(latestMessage) : undefined;
+
       return {
-        summary: `I pulled the Gmail thread ${threadId}.`,
+        summary: [
+          `I pulled the Gmail thread ${threadId}.`,
+          bodyPreview ? `Body: ${bodyPreview}.` : undefined,
+        ]
+          .filter(Boolean)
+          .join(" "),
         result: payload as Record<string, unknown>,
       };
     },
@@ -1042,6 +1071,53 @@ function toCalendarDateTime(raw: string, parsed: Date) {
   const min = String(parsed.getMinutes()).padStart(2, "0");
   const sec = String(parsed.getSeconds()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
+}
+
+function extractEmailBodyPreview(message: Record<string, unknown>) {
+  const payload = message.payload as Record<string, unknown> | undefined;
+  const text = extractPlainTextFromPayload(payload)?.replace(/\s+/g, " ").trim();
+  if (!text) {
+    return undefined;
+  }
+  return text.length > 280 ? `${text.slice(0, 277)}...` : text;
+}
+
+function extractPlainTextFromPayload(payload?: Record<string, unknown>): string | undefined {
+  if (!payload) {
+    return undefined;
+  }
+
+  const mimeType = typeof payload.mimeType === "string" ? payload.mimeType : undefined;
+  const body = payload.body as Record<string, unknown> | undefined;
+  const data = typeof body?.data === "string" ? body.data : undefined;
+  const parts = Array.isArray(payload.parts) ? (payload.parts as Array<Record<string, unknown>>) : [];
+
+  if (mimeType === "text/plain" && data) {
+    return decodeBase64UrlUtf8(data);
+  }
+
+  for (const part of parts) {
+    const plain = extractPlainTextFromPayload(part);
+    if (plain) {
+      return plain;
+    }
+  }
+
+  if (data) {
+    return decodeBase64UrlUtf8(data);
+  }
+
+  return undefined;
+}
+
+function decodeBase64UrlUtf8(value: string) {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return Buffer.from(padded, "base64").toString("utf8");
+  } catch {
+    return "";
+  }
 }
 
 export const insertUserMessage = internalMutation({
