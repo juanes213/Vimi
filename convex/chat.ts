@@ -135,8 +135,8 @@ Rules:
   - gmail.createDraft { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
   - gmail.sendEmail { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
   - calendar.listEvents { "timeMin"?: string, "timeMax"?: string, "maxResults"?: number }
-  - calendar.createEvent { "title": string, "start": string, "end": string, "description"?: string }
-  - calendar.updateEvent { "eventId": string, "title"?: string, "start"?: string, "end"?: string, "description"?: string }
+  - calendar.createEvent { "title": string, "start": string, "end"?: string, "description"?: string, "timeZone"?: string }
+  - calendar.updateEvent { "eventId": string, "title"?: string, "start"?: string, "end"?: string, "description"?: string, "timeZone"?: string }
   - internal.createTask { "title": string, "priority"?: "high" | "medium" | "low", "dueDate"?: string, "description"?: string }
   - internal.createReminder { "text": string, "date"?: string, "time"?: string, "triggerAt"?: string, "deliveryChannels"?: ["in_app"] | ["in_app","gmail"] }
   - internal.createEvent { "title": string, "date": string, "time"?: string }
@@ -145,6 +145,7 @@ Rules:
 - If the user asks to draft an email, use gmail.createDraft.
 - If the user asks to check inbox or search email, use gmail.searchInbox.
 - If the user asks about calendar or scheduling, use calendar tools.
+- For calendar.createEvent and calendar.updateEvent, use ISO or RFC3339 datetimes. If the user gives only a start time, default the event to 1 hour.
 - If the user asks for a tiny reminder like "in 30m", use internal.createReminder with triggerAt in ISO format when possible.
 - Keep assistantReply brief, warm, and conversational.`;
 
@@ -284,11 +285,11 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
     approvalPolicy: "never",
     buildApprovalSummary: (args) => `Create a calendar event "${String(args.title ?? "")}"`,
     execute: async (ctx, userId, args) => {
+      const normalized = normalizeCalendarEventTiming(args.start, args.end, args.timeZone);
       const payload = {
         summary: String(args.title ?? ""),
         description: args.description ? String(args.description) : undefined,
-        start: { dateTime: String(args.start ?? "") },
-        end: { dateTime: String(args.end ?? "") },
+        ...normalized,
       };
       const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
         googleApiFetch(token, calendarUrl("/events"), {
@@ -296,14 +297,17 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
           body: JSON.stringify(payload),
         }),
       );
-      if (!response.ok) throw new Error(`Calendar create failed: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Calendar create failed: ${response.status} ${errorText}`);
+      }
       const created = (await response.json()) as { id?: string };
       if (created.id) {
         await ctx.runMutation(internal.chat.createEventFromCalendarTool, {
           userId,
           title: String(args.title ?? ""),
-          date: new Date(String(args.start ?? "")).getTime(),
-          time: extractTimeLabel(String(args.start ?? "")),
+          date: normalized.localStart.getTime(),
+          time: extractTimeLabel(normalized.localStart.toISOString()),
           externalId: created.id,
           externalSource: "google_calendar",
         });
@@ -324,15 +328,21 @@ const toolRegistry: Record<ToolName, ToolDefinition> = {
       const payload: Record<string, unknown> = {};
       if (args.title) payload.summary = String(args.title);
       if (args.description) payload.description = String(args.description);
-      if (args.start) payload.start = { dateTime: String(args.start) };
-      if (args.end) payload.end = { dateTime: String(args.end) };
+      if (args.start || args.end) {
+        const normalized = normalizeCalendarEventTiming(args.start, args.end, args.timeZone);
+        payload.start = normalized.start;
+        payload.end = normalized.end;
+      }
       const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
         googleApiFetch(token, calendarUrl(`/events/${encodeURIComponent(eventId)}`), {
           method: "PATCH",
           body: JSON.stringify(payload),
         }),
       );
-      if (!response.ok) throw new Error(`Calendar update failed: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Calendar update failed: ${response.status} ${errorText}`);
+      }
       const updated = await response.json();
       return {
         summary: "I updated the calendar event.",
@@ -644,7 +654,7 @@ async function handleUserMessage(
   await persistMemoryNotes(ctx, userId, planned.memoryNotes, source);
 
   const assistantFragments: string[] = [];
-  if (planned.assistantReply.trim()) {
+  if (planned.assistantReply.trim() && planned.toolCalls.length === 0) {
     assistantFragments.push(planned.assistantReply.trim());
   }
 
@@ -734,7 +744,10 @@ async function planAssistantResponse(
       messages: [
         {
           role: "system",
-          content: `${PLANNER_SYSTEM_PROMPT}\n\nCurrent context:\n${JSON.stringify(context)}`,
+          content: `${PLANNER_SYSTEM_PROMPT}\n\nCurrent time context:\n${JSON.stringify({
+            nowIso: new Date().toISOString(),
+            defaultTimeZone: "America/Bogota",
+          })}\n\nCurrent context:\n${JSON.stringify(context)}`,
         },
         { role: "user", content: userText },
       ],
@@ -836,12 +849,16 @@ async function executeToolCall(
     return result;
   } catch (error) {
     if (toolName.startsWith("gmail.") || toolName.startsWith("calendar.")) {
+      const message = String(error);
       await ctx.runMutation(internal.integrations.saveIntegrationSync, {
         userId,
         provider: "google",
         lastSyncAt: Date.now(),
-        lastError: String(error),
-        status: "error",
+        lastError: message,
+        status:
+          message.includes("401") || message.includes("invalid_grant") || message.includes("invalid_token")
+            ? "needs_reauth"
+            : "connected",
       });
     }
     throw error;
@@ -898,6 +915,56 @@ function extractTimeLabel(isoString: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function normalizeCalendarEventTiming(startInput: unknown, endInput: unknown, timeZoneInput: unknown) {
+  const timeZone = typeof timeZoneInput === "string" && timeZoneInput.trim()
+    ? timeZoneInput.trim()
+    : "America/Bogota";
+
+  const startRaw = String(startInput ?? "").trim();
+  if (!startRaw) {
+    throw new Error("Calendar event is missing a start date/time.");
+  }
+
+  const startDate = new Date(startRaw);
+  if (Number.isNaN(startDate.getTime())) {
+    throw new Error(
+      `Calendar event start must be an ISO/RFC3339 date-time. Received: ${startRaw}`,
+    );
+  }
+
+  const endRaw = String(endInput ?? "").trim();
+  const endDate =
+    endRaw && !Number.isNaN(new Date(endRaw).getTime())
+      ? new Date(endRaw)
+      : new Date(startDate.getTime() + 60 * 60 * 1000);
+
+  return {
+    start: {
+      dateTime: toCalendarDateTime(startRaw, startDate),
+      timeZone,
+    },
+    end: {
+      dateTime: toCalendarDateTime(endRaw || endDate.toISOString(), endDate),
+      timeZone,
+    },
+    localStart: startDate,
+  };
+}
+
+function toCalendarDateTime(raw: string, parsed: Date) {
+  const trimmed = raw.trim();
+  if (trimmed && /([zZ]|[+-]\d{2}:\d{2})$/.test(trimmed)) {
+    return trimmed;
+  }
+  const yyyy = parsed.getFullYear();
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const hh = String(parsed.getHours()).padStart(2, "0");
+  const min = String(parsed.getMinutes()).padStart(2, "0");
+  const sec = String(parsed.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
 }
 
 export const insertUserMessage = internalMutation({
