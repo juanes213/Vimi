@@ -6,10 +6,8 @@ import { useVAD } from "./useVAD";
 
 export type VoiceMode = "idle" | "listening" | "thinking" | "speaking";
 
-const CONVEX_HTTP_URL = (import.meta.env.VITE_CONVEX_URL as string).replace(
-  ".convex.cloud",
-  ".convex.site",
-);
+const CONVEX_URL = import.meta.env.VITE_CONVEX_URL as string | undefined;
+const CONVEX_HTTP_URL = CONVEX_URL?.replace(".convex.cloud", ".convex.site");
 
 function createChunker(onChunk: (chunk: string) => void) {
   let buffer = "";
@@ -54,7 +52,7 @@ export function useVoiceChat() {
   const [mode, setMode] = useState<VoiceMode>("idle");
   const [liveAssistant, setLiveAssistant] = useState("");
   const [autoListen, setAutoListen] = useState(true);
-  const fetchAuthToken = useAuthToken();
+  const authToken = useAuthToken();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -74,12 +72,14 @@ export function useVoiceChat() {
       abortRef.current = controller;
 
       try {
-        const token = await fetchAuthToken();
+        if (!CONVEX_HTTP_URL) {
+          throw new Error("Missing VITE_CONVEX_URL. Set it in Vercel and redeploy.");
+        }
         const res = await fetch(`${CONVEX_HTTP_URL}/chat/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({ text: userText }),
           signal: controller.signal,
@@ -141,7 +141,7 @@ export function useVoiceChat() {
         abortRef.current = null;
       }
     },
-    [fetchAuthToken, tts],
+    [authToken, tts],
   );
 
   const interruptAndSend = useCallback(
