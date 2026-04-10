@@ -103,7 +103,7 @@ export const googleOAuthCallback = httpAction(async (ctx, request) => {
 
   try {
     const tokenResponse = await exchangeCodeForTokens(code);
-    const profile = await fetchGoogleProfile(tokenResponse.access_token);
+    const profile = await fetchGoogleProfile(tokenResponse.access_token, tokenResponse.id_token);
 
     await ctx.runMutation(internal.integrations.completeGoogleOAuth, {
       userId: parsedState.userId as any,

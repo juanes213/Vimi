@@ -9,6 +9,9 @@ const GMAIL_BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3/calendars/primary";
 
 export const GOOGLE_SCOPES = [
+  "openid",
+  "email",
+  "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/gmail.send",
@@ -120,14 +123,35 @@ export async function revokeGoogleToken(token: string) {
   });
 }
 
-export async function fetchGoogleProfile(accessToken: string) {
-  const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+function decodeJwtPayload(token: string) {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    throw new Error("Missing JWT payload");
+  }
+  const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>;
+}
+
+export async function fetchGoogleProfile(accessToken: string, idToken?: string) {
+  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) {
-    throw new Error(`Google profile fetch failed: ${response.status}`);
+
+  if (response.ok) {
+    return (await response.json()) as { id: string; email?: string; name?: string };
   }
-  return (await response.json()) as { id: string; email?: string; name?: string };
+
+  if (idToken) {
+    const payload = decodeJwtPayload(idToken);
+    return {
+      id: String(payload.sub ?? ""),
+      email: payload.email ? String(payload.email) : undefined,
+      name: payload.name ? String(payload.name) : undefined,
+    };
+  }
+
+  throw new Error(`Google profile fetch failed: ${response.status}`);
 }
 
 export async function serializeTokenRecord(record: {
