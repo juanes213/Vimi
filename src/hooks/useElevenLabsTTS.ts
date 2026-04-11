@@ -1,19 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Streaming Text-to-Speech con ElevenLabs WebSocket API.
- *
- * Flujo:
- *  1. `start()` abre un WebSocket a ElevenLabs
- *  2. `sendText(chunk)` envía texto a medida que llega del LLM
- *  3. ElevenLabs devuelve audio en base64 por el mismo WebSocket
- *  4. Cada chunk se decodifica y se pone en cola en un AudioContext
- *  5. `flush()` marca fin de entrada; `stop()` corta todo de inmediato
- *
- * La cola de audio usa `AudioBufferSourceNode` encadenados para que no haya
- * huecos entre chunks y se pueda interrumpir cortando el AudioContext.
- */
-
 const API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined;
 const VOICE_ID = (import.meta.env.VITE_ELEVENLABS_VOICE_ID as string | undefined) ?? "21m00Tcm4TlvDq8ikWAM";
 const MODEL = (import.meta.env.VITE_ELEVENLABS_MODEL as string | undefined) ?? "eleven_flash_v2_5";
@@ -24,10 +10,30 @@ export function useElevenLabsTTS() {
   const [status, setStatus] = useState<TTSStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
+  const nextStartTimeRef = useRef(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const pendingChunksRef = useRef<string[]>([]);
   const socketOpenRef = useRef(false);
+  const fallbackBufferRef = useRef("");
+  const useBrowserFallbackRef = useRef(false);
+  const receivedAudioRef = useRef(false);
+
+  const speakWithBrowser = useCallback((text: string) => {
+    const content = text.replace(/\s+/g, " ").trim();
+    if (!content || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setStatus("idle");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => setStatus("speaking");
+    utterance.onend = () => setStatus("idle");
+    utterance.onerror = () => setStatus("error");
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
   const ensureAudioContext = useCallback(() => {
     if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
@@ -45,14 +51,13 @@ export function useElevenLabsTTS() {
     async (base64Audio: string) => {
       const ctx = ensureAudioContext();
       try {
-        // Decodificar base64 → ArrayBuffer
         const binary = atob(base64Audio);
         const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
 
-        // ElevenLabs devuelve MP3 por defecto → decodeAudioData lo entiende
         const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
-
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
@@ -69,6 +74,9 @@ export function useElevenLabsTTS() {
             setStatus("idle");
           }
         };
+
+        receivedAudioRef.current = true;
+        fallbackBufferRef.current = "";
         setStatus("speaking");
       } catch (err) {
         console.error("[TTS] decodeAudioData failed", err);
@@ -78,12 +86,17 @@ export function useElevenLabsTTS() {
   );
 
   const start = useCallback(() => {
-    if (!API_KEY || API_KEY.startsWith("sk_placeholder")) {
-      console.warn("[TTS] VITE_ELEVENLABS_API_KEY no configurada — modo silencioso");
+    fallbackBufferRef.current = "";
+    receivedAudioRef.current = false;
+    useBrowserFallbackRef.current = !API_KEY || API_KEY.startsWith("sk_placeholder");
+    if (useBrowserFallbackRef.current) {
+      console.warn("[TTS] ElevenLabs key missing, using browser speech fallback");
       setStatus("idle");
       return;
     }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return;
+    }
 
     ensureAudioContext();
     setStatus("connecting");
@@ -96,7 +109,6 @@ export function useElevenLabsTTS() {
 
     ws.onopen = () => {
       socketOpenRef.current = true;
-      // Mensaje inicial: autenticación + config de voz
       ws.send(
         JSON.stringify({
           text: " ",
@@ -108,7 +120,6 @@ export function useElevenLabsTTS() {
           xi_api_key: API_KEY,
         }),
       );
-      // Drenar chunks que llegaron antes de que abriera
       for (const chunk of pendingChunksRef.current) {
         ws.send(JSON.stringify({ text: chunk }));
       }
@@ -131,22 +142,37 @@ export function useElevenLabsTTS() {
 
     ws.onerror = (err) => {
       console.error("[TTS] websocket error", err);
+      if (!receivedAudioRef.current) {
+        useBrowserFallbackRef.current = true;
+      }
       setStatus("error");
     };
 
     ws.onclose = () => {
       socketOpenRef.current = false;
       wsRef.current = null;
+      if (!receivedAudioRef.current && useBrowserFallbackRef.current && fallbackBufferRef.current.trim()) {
+        speakWithBrowser(fallbackBufferRef.current);
+        fallbackBufferRef.current = "";
+        return;
+      }
       if (activeSourcesRef.current.size === 0) {
         setStatus("idle");
       }
     };
-  }, [ensureAudioContext, scheduleAudio]);
+  }, [ensureAudioContext, scheduleAudio, speakWithBrowser]);
 
   const sendText = useCallback((text: string) => {
-    if (!text) return;
-    // Añadir espacio al final ayuda a ElevenLabs a segmentar sin cortar palabras
-    const payload = text.endsWith(" ") ? text : text + " ";
+    if (!text) {
+      return;
+    }
+
+    const payload = text.endsWith(" ") ? text : `${text} `;
+    fallbackBufferRef.current += payload;
+    if (useBrowserFallbackRef.current) {
+      return;
+    }
+
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ text: payload }));
@@ -156,15 +182,19 @@ export function useElevenLabsTTS() {
   }, []);
 
   const flush = useCallback(() => {
+    if (useBrowserFallbackRef.current) {
+      speakWithBrowser(fallbackBufferRef.current);
+      fallbackBufferRef.current = "";
+      return;
+    }
+
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      // Enviar string vacío le indica a ElevenLabs que ya no viene más texto
       ws.send(JSON.stringify({ text: "" }));
     }
-  }, []);
+  }, [speakWithBrowser]);
 
   const stop = useCallback(() => {
-    // 1. Cerrar WebSocket para que no siga generando
     if (wsRef.current) {
       try {
         wsRef.current.close();
@@ -175,8 +205,13 @@ export function useElevenLabsTTS() {
     }
     socketOpenRef.current = false;
     pendingChunksRef.current = [];
+    fallbackBufferRef.current = "";
+    useBrowserFallbackRef.current = false;
+    receivedAudioRef.current = false;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
 
-    // 2. Cortar todo el audio que esté sonando o encolado
     for (const source of activeSourcesRef.current) {
       try {
         source.stop();
@@ -186,10 +221,7 @@ export function useElevenLabsTTS() {
       }
     }
     activeSourcesRef.current.clear();
-
-    // 3. Resetear reloj de scheduling
     nextStartTimeRef.current = audioCtxRef.current?.currentTime ?? 0;
-
     setStatus("idle");
   }, []);
 
