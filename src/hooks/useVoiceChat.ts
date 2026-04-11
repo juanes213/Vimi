@@ -131,6 +131,7 @@ export function useVoiceChat() {
               chunker.flush();
               void tts.flush();
               flushed = true;
+              setLiveAssistant("");
               clearLiveAssistantOnIdleRef.current = true;
             } else if (event === "error") {
               console.error("[stream] server error", data.message);
@@ -146,6 +147,7 @@ export function useVoiceChat() {
         if (!flushed) {
           chunker.flush();
           void tts.flush();
+          setLiveAssistant("");
           clearLiveAssistantOnIdleRef.current = true;
         }
         abortRef.current = null;

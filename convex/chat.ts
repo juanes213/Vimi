@@ -198,9 +198,11 @@ export const streamChat = httpAction(async (ctx, request) => {
             emitText(fragment);
           }
 
-          // Save full assistant message
-          const allParts = [planned.assistantReply.trim(), ...fragments].filter(Boolean);
-          const assistantText = allParts.join("\n\n").trim() || "I'm here.";
+          // Save the final outcome without duplicating the spoken acknowledgment.
+          const assistantText =
+            fragments.filter(Boolean).join("\n\n").trim() ||
+            planned.assistantReply.trim() ||
+            "I'm here.";
           await ctx.runMutation(internal.chat.saveAssistantMessage, {
             userId,
             text: assistantText,
@@ -419,11 +421,6 @@ async function runAgenticLoop(
   const toolHistory: ToolHistoryEntry[] = [];
   const firstToolName = initialPlan.toolCalls[0]?.name;
 
-  // Issue 6: Always emit assistantReply first, regardless of whether there are tool calls
-  if (initialPlan.assistantReply.trim()) {
-    fragments.push(initialPlan.assistantReply.trim());
-  }
-
   let pendingToolCalls = initialPlan.toolCalls;
   let iteration = 0;
 
@@ -461,7 +458,12 @@ async function runAgenticLoop(
           {
             role: "system",
             content: source === "voice"
-              ? `${AGENTIC_CONTINUATION_PROMPT}${VOICE_ADDENDUM}`
+              ? `${AGENTIC_CONTINUATION_PROMPT}
+
+VOICE CONTINUATION RULES:
+- No markdown.
+- Do not repeat a new acknowledgment like "Sure" or "Got it" because Vimi already did that.
+- Continue directly with the result in natural spoken language.`
               : AGENTIC_CONTINUATION_PROMPT,
           },
           {
@@ -565,7 +567,10 @@ async function handleUserMessage(
     ctx, userId, text, planned, source, sourceMessageId,
   );
 
-  const assistantText = fragments.filter(Boolean).join("\n\n").trim() || "I'm here.";
+  const assistantText =
+    fragments.filter(Boolean).join("\n\n").trim() ||
+    planned.assistantReply.trim() ||
+    "I'm here.";
   await ctx.runMutation(internal.chat.saveAssistantMessage, {
     userId,
     text: assistantText,

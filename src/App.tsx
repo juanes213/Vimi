@@ -31,6 +31,49 @@ const COMPANION_PILLARS = [
 
 const NAV_PAGES: Section[] = ["chat", "tasks", "reminders", "payments", "budgets", "events"];
 
+function mapAssistantMessageToSection(parsedType?: string): Section | null {
+  if (!parsedType) return null;
+  if (parsedType === "internal.createTask") return "tasks";
+  if (parsedType === "internal.createReminder" || parsedType === "reminder.delivery") return "reminders";
+  if (
+    parsedType === "internal.createEvent" ||
+    parsedType === "calendar.createEvent" ||
+    parsedType === "calendar.updateEvent" ||
+    parsedType === "calendar.listEvents"
+  ) {
+    return "events";
+  }
+  return null;
+}
+
+function playReminderChime() {
+  if (typeof window === "undefined") return;
+  const Ctx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const ctx = new Ctx();
+  const now = ctx.currentTime;
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
+
+  const notes = [880, 1174.66, 1567.98];
+  notes.forEach((frequency, index) => {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(frequency, now + index * 0.14);
+    osc.connect(gain);
+    osc.start(now + index * 0.14);
+    osc.stop(now + index * 0.14 + 0.28);
+  });
+
+  window.setTimeout(() => {
+    void ctx.close();
+  }, 1400);
+}
+
 export default function App() {
   return (
     <div className="min-h-screen bg-transparent text-slate-100">
@@ -112,6 +155,7 @@ function Dashboard() {
   const activeDetail = SECTION_DETAILS[activePage];
   const googleIntegration = integrations.find((integration) => integration.provider === "google");
   const lastReminderToastId = useRef<string | null>(null);
+  const lastHandledAssistantActionId = useRef<string | null>(null);
   const orbStyle: CSSProperties = {
     background:
       "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(185,153,255,0.95) 26%, rgba(137,92,255,0.9) 52%, rgba(58,25,124,0.95) 100%)",
@@ -156,9 +200,23 @@ function Dashboard() {
     if (!latestReminder || latestReminder._id === lastReminderToastId.current) return;
 
     lastReminderToastId.current = latestReminder._id;
+    playReminderChime();
     toast(latestReminder.text, {
       description: "Vimi reminder",
     });
+  }, [chatMessages]);
+
+  useEffect(() => {
+    const latestAssistantAction = [...chatMessages]
+      .reverse()
+      .find((message) => message.role === "assistant" && !!message.parsedType);
+
+    if (!latestAssistantAction || latestAssistantAction._id === lastHandledAssistantActionId.current) return;
+
+    lastHandledAssistantActionId.current = latestAssistantAction._id;
+    const targetSection = mapAssistantMessageToSection(latestAssistantAction.parsedType);
+    if (!targetSection) return;
+    setActivePage(targetSection);
   }, [chatMessages]);
 
   const handleConnectGoogle = async () => {

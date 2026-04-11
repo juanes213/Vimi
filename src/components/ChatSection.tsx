@@ -16,7 +16,7 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
   const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
   const showLiveAssistant =
     liveText.length > 0 &&
-    activeMode !== "idle" &&
+    activeMode === "thinking" &&
     liveText !== (lastAssistantMessage?.text.replace(/\{[\s\S]*"action"[\s\S]*\}/, "").trim() ?? "");
 
   useEffect(() => {
