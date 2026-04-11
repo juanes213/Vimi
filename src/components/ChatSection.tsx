@@ -12,6 +12,12 @@ interface ChatTranscriptProps {
 export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProps) {
   const messages = useQuery(api.chat.listMessages) ?? [];
   const scrollRef = useRef<HTMLDivElement>(null);
+  const liveText = liveAssistant.replace(/\{[\s\S]*/, "").trim();
+  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  const showLiveAssistant =
+    liveText.length > 0 &&
+    activeMode !== "idle" &&
+    liveText !== (lastAssistantMessage?.text.replace(/\{[\s\S]*"action"[\s\S]*\}/, "").trim() ?? "");
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -66,11 +72,11 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
             </div>
           ))}
 
-          {liveAssistant && activeMode !== "idle" && (
+          {showLiveAssistant && (
             <div className="flex justify-start">
               <div className="max-w-[88%] rounded-[20px] rounded-bl-sm border border-white/10 bg-[#120c26]/80 px-3.5 py-2.5 text-sm text-slate-200 shadow-sm">
                 <p className="leading-6">
-                  {liveAssistant.replace(/\{[\s\S]*/, "").trim()}
+                  {liveText}
                   <span className="ml-1 inline-block h-3.5 w-[2px] animate-pulse bg-slate-400 align-middle" />
                 </p>
               </div>

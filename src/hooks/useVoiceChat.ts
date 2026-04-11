@@ -55,6 +55,7 @@ export function useVoiceChat() {
   const authToken = useAuthToken();
 
   const abortRef = useRef<AbortController | null>(null);
+  const clearLiveAssistantOnIdleRef = useRef(false);
 
   const tts = useElevenLabsTTS();
   const recorder = useVoiceRecorder();
@@ -128,8 +129,9 @@ export function useVoiceChat() {
               if (spokenDelta) chunker.push(spokenDelta);
             } else if (event === "done") {
               chunker.flush();
-              tts.flush();
+              void tts.flush();
               flushed = true;
+              clearLiveAssistantOnIdleRef.current = true;
             } else if (event === "error") {
               console.error("[stream] server error", data.message);
             }
@@ -143,7 +145,8 @@ export function useVoiceChat() {
         // Ensure ElevenLabs receives EOS even if the stream ended without a done event
         if (!flushed) {
           chunker.flush();
-          tts.flush();
+          void tts.flush();
+          clearLiveAssistantOnIdleRef.current = true;
         }
         abortRef.current = null;
       }
@@ -196,6 +199,10 @@ export function useVoiceChat() {
       });
     } else if (tts.status === "idle") {
       vad.stopListening();
+      if (clearLiveAssistantOnIdleRef.current) {
+        clearLiveAssistantOnIdleRef.current = false;
+        setLiveAssistant("");
+      }
       setMode((prev) => {
         if (prev === "speaking") {
           if (autoListen) {
