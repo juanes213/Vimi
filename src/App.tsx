@@ -164,15 +164,11 @@ function Dashboard() {
   };
 
   const launchVimi = () => {
-    if (activePage !== "chat") {
-      setActivePage("chat");
-      return;
-    }
     if (voice.activeMode === "idle") {
       voice.startListening();
-      return;
+    } else {
+      voice.stopAll();
     }
-    voice.stopAll();
   };
 
   useEffect(() => {
