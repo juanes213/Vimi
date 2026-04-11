@@ -189,9 +189,24 @@ const applicationTables = {
     tags: v.array(v.string()),
     createdAt: v.number(),
     lastReferencedAt: v.optional(v.number()),
+    embedding: v.optional(v.array(v.float64())),
   })
     .index("by_userId_createdAt", ["userId", "createdAt"])
-    .index("by_userId_lastReferencedAt", ["userId", "lastReferencedAt"]),
+    .index("by_userId_lastReferencedAt", ["userId", "lastReferencedAt"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536, // text-embedding-3-small — changing model requires re-embedding all records
+      filterFields: ["userId"],
+    }),
+
+  sessionSummaries: defineTable({
+    userId: v.id("users"),
+    summaryText: v.string(),
+    coveredMessageCount: v.number(),
+    oldestMessageCreatedAt: v.number(),
+    newestMessageCreatedAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_userId_createdAt", ["userId", "createdAt"]),
 };
 
 export default defineSchema({

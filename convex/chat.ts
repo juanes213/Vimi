@@ -11,499 +11,50 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireAuthUserId } from "./lib/auth";
 import {
-  buildDraftEmailRaw,
-  calendarUrl,
-  gmailUrl,
-  googleApiFetch,
-  withGoogleAccessToken,
-} from "./lib/google";
+  AGENTIC_CONTINUATION_PROMPT,
+  buildPlannerSystemContent,
+  parsePlannerToolCalls,
+  VOICE_ADDENDUM,
+} from "./chat/prompts";
+import { executeToolCall, toolRegistry } from "./chat/tools";
+import type {
+  AgenticContinuationOutput,
+  PlannerOutput,
+  PlannerToolCall,
+  SourceType,
+  ToolContext,
+  ToolHistoryEntry,
+  ToolName,
+} from "./chat/types";
+import { chunkText, detectApprovalDecision, detectChatCommand, safeJsonParse } from "./chat/utils";
+import { requireAuthUserId } from "./lib/auth";
 
 const openai = new OpenAI({
   baseURL: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
   apiKey: process.env.GROQ_API_KEY ?? "missing-groq-api-key",
 });
 
+// Dedicated embeddings client — Groq does not expose /embeddings.
+// Set OPENAI_API_KEY in Convex env for semantic memory. Without it, memory
+// falls back to FIFO (most recent) retrieval — everything else still works.
+const OPENAI_EMBEDDINGS_KEY = process.env.OPENAI_API_KEY;
+const openaiEmbeddings = OPENAI_EMBEDDINGS_KEY
+  ? new OpenAI({ baseURL: "https://api.openai.com/v1", apiKey: OPENAI_EMBEDDINGS_KEY })
+  : null;
+
 const PLANNER_MODEL = process.env.VIMI_PLANNER_MODEL ?? "openai/gpt-oss-120b";
+const EMBEDDINGS_MODEL = "text-embedding-3-small"; // 1536 dims — must match schema vectorIndex
+const internalChatApi = internal.chat as Record<string, any>;
 
-type ApprovalDecision = "approved" | "rejected";
-type ToolApprovalPolicy = "never" | "always" | "proactive_only";
-type SourceType = "voice" | "text" | "ui";
-
-type ToolName =
-  | "gmail.searchInbox"
-  | "gmail.readThread"
-  | "gmail.createDraft"
-  | "gmail.sendEmail"
-  | "calendar.listEvents"
-  | "calendar.createEvent"
-  | "calendar.updateEvent"
-  | "internal.createTask"
-  | "internal.createReminder"
-  | "internal.createEvent";
-
-type PlannerToolCall = {
-  name: ToolName;
-  args: Record<string, unknown>;
-  reason?: string;
+type MemoryContextItem = {
+  note: string;
+  tags: string[];
+  confidence?: number;
 };
 
-type PlannerOutput = {
-  assistantReply: string;
-  toolCalls: PlannerToolCall[];
-  profileUpdate?: {
-    biography?: string;
-    preferences?: string[];
-    goals?: string[];
-    routines?: string[];
-    communicationStyle?: string;
-    timezone?: string;
-  };
-  memoryNotes?: Array<{
-    note: string;
-    tags?: string[];
-    confidence?: number;
-  }>;
-};
-
-type ChatCommand = {
-  name: "clear_chat";
-};
-
-type ToolResult = {
-  summary: string;
-  result?: Record<string, unknown>;
-};
-
-type ToolContext = {
-  runQuery: any;
-  runMutation: any;
-  runAction?: any;
-};
-
-type ToolDefinition = {
-  description: string;
-  risk: "low" | "medium" | "high";
-  approvalPolicy: ToolApprovalPolicy;
-  buildApprovalSummary: (args: Record<string, unknown>) => string;
-  execute: (
-    ctx: ToolContext,
-    userId: Id<"users">,
-    args: Record<string, unknown>,
-  ) => Promise<ToolResult>;
-};
-
-const APPROVE_PATTERNS = [
-  /^\s*yes\b/i,
-  /^\s*send it\b/i,
-  /^\s*do it\b/i,
-  /^\s*go ahead\b/i,
-  /^\s*create it\b/i,
-  /^\s*approve\b/i,
-];
-
-const REJECT_PATTERNS = [
-  /^\s*no\b/i,
-  /^\s*cancel\b/i,
-  /^\s*don't do that\b/i,
-  /^\s*do not do that\b/i,
-  /^\s*stop\b/i,
-  /^\s*reject\b/i,
-];
-
-const PLANNER_SYSTEM_PROMPT = `You are Vimi, a proactive personal life assistant.
-You help the user organize life, execute practical actions, and remember who they are over time.
-
-You must respond with valid JSON only using this exact shape:
-{
-  "assistantReply": "natural language, concise",
-  "toolCalls": [{ "name": "tool.name", "args": { ... }, "reason": "optional short reason" }],
-  "profileUpdate": {
-    "biography": "optional",
-    "preferences": ["optional"],
-    "goals": ["optional"],
-    "routines": ["optional"],
-    "communicationStyle": "optional",
-    "timezone": "optional"
-  },
-  "memoryNotes": [{ "note": "...", "tags": ["..."], "confidence": 0.8 }]
-}
-
-Rules:
-- Always include assistantReply and toolCalls.
-- toolCalls can be empty.
-- Only use these tools:
-  - gmail.searchInbox { "query": string, "maxResults"?: number }
-  - gmail.readThread { "threadId": string }
-  - gmail.createDraft { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
-  - gmail.sendEmail { "to": string, "subject": string, "body": string, "cc"?: string[], "bcc"?: string[] }
-  - calendar.listEvents { "timeMin"?: string, "timeMax"?: string, "maxResults"?: number }
-  - calendar.createEvent { "title": string, "start": string, "end"?: string, "description"?: string, "timeZone"?: string }
-  - calendar.updateEvent { "eventId": string, "title"?: string, "start"?: string, "end"?: string, "description"?: string, "timeZone"?: string }
-  - internal.createTask { "title": string, "priority"?: "high" | "medium" | "low", "dueDate"?: string, "description"?: string }
-  - internal.createReminder { "text": string, "date"?: string, "time"?: string, "triggerAt"?: string, "deliveryChannels"?: ["in_app"] | ["in_app","gmail"] }
-  - internal.createEvent { "title": string, "date": string, "time"?: string }
-- If the user is sharing identity, preferences, routines, goals, career, likes/dislikes, capture that in profileUpdate and/or memoryNotes.
-- If the user asks to send an email, use gmail.sendEmail.
-- If the user asks to draft an email, use gmail.createDraft.
-- If the user asks to check inbox or search email, use gmail.searchInbox.
-- If the user asks for the latest, newest, or most recent email, use gmail.searchInbox with maxResults: 1.
-- For gmail.searchInbox, translate natural requests into Gmail search operators when useful:
-  from:, to:, subject:, has:attachment, older_than:, newer_than:, after:, before:, and quoted phrases.
-- Example: "the email Maria Fernando sent last month about the invoice" can become something like from:"Maria Fernando" "invoice" older_than:0d newer_than:30d.
-- gmail.searchInbox already returns sender, subject, date, snippet, and body preview for top matches, so prefer it for "find/show/tell me what this email says" requests.
-- Use gmail.readThread only when you already have an explicit Gmail thread/message id.
-- If the user asks about calendar or scheduling, use calendar tools.
-- For calendar.createEvent and calendar.updateEvent, use ISO or RFC3339 datetimes. If the user gives only a start time, default the event to 1 hour.
-- If the user asks for a tiny reminder like "in 30m", use internal.createReminder with triggerAt in ISO format when possible.
-- Keep assistantReply brief, warm, and conversational.`;
-
-const toolRegistry: Record<ToolName, ToolDefinition> = {
-  "gmail.searchInbox": {
-    description: "Search Gmail inbox",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Search Gmail for "${String(args.query ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const query = String(args.query ?? "").trim();
-      const maxResults = Math.min(Number(args.maxResults ?? 5) || 5, 10);
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(
-          token,
-          `${gmailUrl("/messages")}?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
-        ),
-      );
-      if (!response.ok) throw new Error(`Gmail search failed: ${response.status}`);
-      const payload = (await response.json()) as {
-        messages?: Array<{ id: string; threadId: string }>;
-        resultSizeEstimate?: number;
-      };
-      const messages = payload.messages ?? [];
-      const detailedMessages =
-        messages.length === 0
-          ? []
-          : await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-              Promise.all(
-                messages.slice(0, Math.min(messages.length, 3)).map(async (message) => {
-                  const detailResponse = await googleApiFetch(
-                    token,
-                    gmailUrl(
-                      `/messages/${encodeURIComponent(message.id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-                    ),
-                  );
-                  if (!detailResponse.ok) {
-                    return {
-                      id: message.id,
-                      threadId: message.threadId,
-                    };
-                  }
-                  const detailPayload = (await detailResponse.json()) as {
-                    id?: string;
-                    threadId?: string;
-                    snippet?: string;
-                    internalDate?: string;
-                    payload?: {
-                      headers?: Array<{ name?: string; value?: string }>;
-                    };
-                  };
-                  const headers = detailPayload.payload?.headers ?? [];
-                  const getHeader = (name: string) =>
-                    headers.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value;
-
-                  return {
-                    id: detailPayload.id ?? message.id,
-                    threadId: detailPayload.threadId ?? message.threadId,
-                    subject: getHeader("Subject"),
-                    from: getHeader("From"),
-                    date: getHeader("Date"),
-                    snippet: detailPayload.snippet,
-                    internalDate: detailPayload.internalDate,
-                    bodyPreview: extractEmailBodyPreview(detailPayload),
-                  };
-                }),
-              ),
-            );
-
-      const latestMessage = detailedMessages[0];
-      return {
-        summary:
-          messages.length === 0
-            ? `I did not find emails for "${query}".`
-            : latestMessage?.subject || latestMessage?.from || latestMessage?.snippet
-              ? [
-                  `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`,
-                  latestMessage.from ? `Latest sender: ${latestMessage.from}.` : undefined,
-                  latestMessage.date ? `Date: ${latestMessage.date}.` : undefined,
-                  latestMessage.subject ? `Subject: ${latestMessage.subject}.` : undefined,
-                  latestMessage.snippet ? `Preview: ${latestMessage.snippet}.` : undefined,
-                  latestMessage.bodyPreview ? `Body: ${latestMessage.bodyPreview}.` : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(" ")
-              : `I found ${messages.length} email result${messages.length === 1 ? "" : "s"} for "${query}".`,
-        result: {
-          query,
-          messages: detailedMessages.length > 0 ? detailedMessages : messages,
-          resultSizeEstimate: payload.resultSizeEstimate ?? messages.length,
-        },
-      };
-    },
-  },
-  "gmail.readThread": {
-    description: "Read a Gmail thread",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Read Gmail thread ${String(args.threadId ?? "")}`,
-    execute: async (ctx, userId, args) => {
-      const threadId = String(args.threadId ?? "").trim();
-      const payload = await withGoogleAccessToken(ctx, internal, userId, async (token) => {
-        const threadResponse = await googleApiFetch(
-          token,
-          gmailUrl(`/threads/${encodeURIComponent(threadId)}?format=full`),
-        );
-        if (threadResponse.ok) {
-          return await threadResponse.json();
-        }
-
-        const messageResponse = await googleApiFetch(
-          token,
-          gmailUrl(`/messages/${encodeURIComponent(threadId)}?format=full`),
-        );
-        if (!messageResponse.ok) {
-          throw new Error(`Gmail read thread failed: ${threadResponse.status}`);
-        }
-        return await messageResponse.json();
-      });
-
-      const threadMessages = Array.isArray((payload as { messages?: unknown[] }).messages)
-        ? ((payload as { messages: Array<Record<string, unknown>> }).messages ?? [])
-        : [payload as Record<string, unknown>];
-      const latestMessage = threadMessages.at(-1);
-      const bodyPreview = latestMessage ? extractEmailBodyPreview(latestMessage) : undefined;
-
-      return {
-        summary: [
-          `I pulled the Gmail thread ${threadId}.`,
-          bodyPreview ? `Body: ${bodyPreview}.` : undefined,
-        ]
-          .filter(Boolean)
-          .join(" "),
-        result: payload as Record<string, unknown>,
-      };
-    },
-  },
-  "gmail.createDraft": {
-    description: "Create an email draft",
-    risk: "medium",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Create a draft email to ${String(args.to ?? "")}`,
-    execute: async (ctx, userId, args) => {
-      const raw = buildDraftEmailRaw({
-        to: String(args.to ?? ""),
-        subject: String(args.subject ?? ""),
-        body: String(args.body ?? ""),
-        cc: Array.isArray(args.cc) ? args.cc.map(String) : undefined,
-        bcc: Array.isArray(args.bcc) ? args.bcc.map(String) : undefined,
-      });
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, gmailUrl("/drafts"), {
-          method: "POST",
-          body: JSON.stringify({ message: { raw } }),
-        }),
-      );
-      if (!response.ok) throw new Error(`Gmail create draft failed: ${response.status}`);
-      const payload = await response.json();
-      return {
-        summary: `I created a Gmail draft for ${String(args.to ?? "the recipient")}.`,
-        result: payload as Record<string, unknown>,
-      };
-    },
-  },
-  "gmail.sendEmail": {
-    description: "Send an email via Gmail",
-    risk: "high",
-    approvalPolicy: "always",
-    buildApprovalSummary: (args) =>
-      `Send an email to ${String(args.to ?? "the recipient")} with subject "${String(args.subject ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const raw = buildDraftEmailRaw({
-        to: String(args.to ?? ""),
-        subject: String(args.subject ?? ""),
-        body: String(args.body ?? ""),
-        cc: Array.isArray(args.cc) ? args.cc.map(String) : undefined,
-        bcc: Array.isArray(args.bcc) ? args.bcc.map(String) : undefined,
-      });
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, gmailUrl("/messages/send"), {
-          method: "POST",
-          body: JSON.stringify({ raw }),
-        }),
-      );
-      if (!response.ok) throw new Error(`Gmail send failed: ${response.status}`);
-      const payload = await response.json();
-      return {
-        summary: `I sent the email to ${String(args.to ?? "the recipient")}.`,
-        result: payload as Record<string, unknown>,
-      };
-    },
-  },
-  "calendar.listEvents": {
-    description: "List calendar events",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: () => "List upcoming Google Calendar events",
-    execute: async (ctx, userId, args) => {
-      const params = new URLSearchParams();
-      params.set("singleEvents", "true");
-      params.set("orderBy", "startTime");
-      params.set("maxResults", String(Math.min(Number(args.maxResults ?? 10) || 10, 20)));
-      if (args.timeMin) params.set("timeMin", String(args.timeMin));
-      if (args.timeMax) params.set("timeMax", String(args.timeMax));
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, `${calendarUrl("/events")}?${params.toString()}`),
-      );
-      if (!response.ok) throw new Error(`Calendar list failed: ${response.status}`);
-      const payload = await response.json();
-      return {
-        summary: `I checked your calendar and found ${Array.isArray(payload.items) ? payload.items.length : 0} event(s).`,
-        result: payload as Record<string, unknown>,
-      };
-    },
-  },
-  "calendar.createEvent": {
-    description: "Create a calendar event",
-    risk: "medium",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Create a calendar event "${String(args.title ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const normalized = normalizeCalendarEventTiming(args.start, args.end, args.timeZone);
-      const payload = {
-        summary: String(args.title ?? ""),
-        description: args.description ? String(args.description) : undefined,
-        ...normalized,
-      };
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, calendarUrl("/events"), {
-          method: "POST",
-          body: JSON.stringify(payload),
-        }),
-      );
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Calendar create failed: ${response.status} ${errorText}`);
-      }
-      const created = (await response.json()) as { id?: string };
-      if (created.id) {
-        await ctx.runMutation(internal.chat.createEventFromCalendarTool, {
-          userId,
-          title: String(args.title ?? ""),
-          date: normalized.localStart.getTime(),
-          time: extractTimeLabel(normalized.localStart.toISOString()),
-          externalId: created.id,
-          externalSource: "google_calendar",
-        });
-      }
-      return {
-        summary: `I created the calendar event "${String(args.title ?? "")}".`,
-        result: created as Record<string, unknown>,
-      };
-    },
-  },
-  "calendar.updateEvent": {
-    description: "Update a calendar event",
-    risk: "medium",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Update calendar event ${String(args.eventId ?? "")}`,
-    execute: async (ctx, userId, args) => {
-      const eventId = String(args.eventId ?? "");
-      const payload: Record<string, unknown> = {};
-      if (args.title) payload.summary = String(args.title);
-      if (args.description) payload.description = String(args.description);
-      if (args.start || args.end) {
-        const normalized = normalizeCalendarEventTiming(args.start, args.end, args.timeZone);
-        payload.start = normalized.start;
-        payload.end = normalized.end;
-      }
-      const response = await withGoogleAccessToken(ctx, internal, userId, async (token) =>
-        googleApiFetch(token, calendarUrl(`/events/${encodeURIComponent(eventId)}`), {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        }),
-      );
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Calendar update failed: ${response.status} ${errorText}`);
-      }
-      const updated = await response.json();
-      return {
-        summary: "I updated the calendar event.",
-        result: updated as Record<string, unknown>,
-      };
-    },
-  },
-  "internal.createTask": {
-    description: "Create an internal Vimi task",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Create task "${String(args.title ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const id = await ctx.runMutation(internal.chat.createTaskFromAgent, {
-        userId,
-        title: String(args.title ?? ""),
-        description: args.description ? String(args.description) : undefined,
-        priority: args.priority ? String(args.priority) : undefined,
-        dueDate: args.dueDate ? new Date(String(args.dueDate)).getTime() : undefined,
-      });
-      return {
-        summary: `I created the task "${String(args.title ?? "")}".`,
-        result: { id },
-      };
-    },
-  },
-  "internal.createReminder": {
-    description: "Create an internal reminder or timer",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Create reminder "${String(args.text ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const triggerAt = args.triggerAt ? new Date(String(args.triggerAt)).getTime() : undefined;
-      const date = args.date
-        ? new Date(String(args.date)).getTime()
-        : triggerAt ?? Date.now() + 30 * 60 * 1000;
-      const id = await ctx.runMutation(internal.chat.createReminderFromAgent, {
-        userId,
-        text: String(args.text ?? ""),
-        date,
-        time: args.time ? String(args.time) : undefined,
-        triggerAt,
-        deliveryChannels: normalizeDeliveryChannels(args.deliveryChannels),
-      });
-      return {
-        summary: `I created the reminder "${String(args.text ?? "")}".`,
-        result: { id },
-      };
-    },
-  },
-  "internal.createEvent": {
-    description: "Create an internal event",
-    risk: "low",
-    approvalPolicy: "never",
-    buildApprovalSummary: (args) => `Create event "${String(args.title ?? "")}"`,
-    execute: async (ctx, userId, args) => {
-      const date = new Date(String(args.date ?? "")).getTime();
-      const id = await ctx.runMutation(internal.chat.createEventFromAgent, {
-        userId,
-        title: String(args.title ?? ""),
-        date,
-        time: args.time ? String(args.time) : undefined,
-      });
-      return {
-        summary: `I created the event "${String(args.title ?? "")}".`,
-        result: { id },
-      };
-    },
-  },
+type RecentMemoryRecord = MemoryContextItem & {
+  _id: Id<"userMemories">;
 };
 
 export const listMessages = query({
@@ -571,12 +122,91 @@ export const streamChat = httpAction(async (ctx, request) => {
       const sendEvent = (event: string, payload: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`));
       };
+      const emitText = (text: string) => {
+        for (const piece of chunkText(text)) {
+          sendEvent("delta", { text: piece });
+        }
+      };
       void (async () => {
         try {
-          const assistantText = await handleUserMessage(ctx, userId, text, "voice");
-          for (const piece of chunkText(assistantText)) {
-            sendEvent("delta", { text: piece });
+          const command = detectChatCommand(text);
+          if (command?.name === "clear_chat") {
+            await ctx.runMutation(internal.chat.clearChatMessagesForUser, { userId });
+            sendEvent("done", { ok: true });
+            return;
           }
+
+          const sourceMessageId = await ctx.runMutation(internal.chat.insertUserMessage, { userId, text });
+
+          // Check pending approvals
+          const pendingApprovals = await ctx.runQuery(internal.chat.getPendingApprovalsForUser, { userId });
+          const approvalDecision = detectApprovalDecision(text);
+
+          if (approvalDecision && pendingApprovals.length === 1) {
+            const resolved = await ctx.runAction(internal.chat.resolveApprovalAction, {
+              userId,
+              approvalId: pendingApprovals[0]._id,
+              decision: approvalDecision,
+              source: "voice",
+            });
+            emitText(String(resolved?.assistantText ?? "Done."));
+            sendEvent("done", { ok: true });
+            return;
+          }
+
+          if (approvalDecision && pendingApprovals.length > 1) {
+            const msg = "I have more than one approval waiting. Open the pending approvals list and choose the one you want me to resolve.";
+            await ctx.runMutation(internal.chat.saveAssistantMessage, { userId, text: msg, parsedType: "approval.clarification" });
+            emitText(msg);
+            sendEvent("done", { ok: true });
+            return;
+          }
+
+          // Semantic memory retrieval (non-fatal)
+          let semanticMemories: Array<{ note: string; tags: string[]; confidence?: number }> | undefined;
+          try {
+            const queryEmbedding = await generateEmbedding(text);
+            semanticMemories = await ctx.runAction(internalChatApi.searchRelevantMemories, {
+              userId,
+              queryEmbedding,
+            });
+          } catch { /* non-fatal — falls back to FIFO */ }
+
+          const plannerContext = await ctx.runQuery(internal.chat.getPlannerContext, { userId });
+          const contextWithMemories = semanticMemories
+            ? { ...plannerContext, memories: semanticMemories }
+            : plannerContext;
+          const planned = await planAssistantResponse(text, contextWithMemories, "voice");
+
+          // Phase 1: emit assistantReply IMMEDIATELY before tools run
+          if (planned.assistantReply.trim()) {
+            emitText(planned.assistantReply.trim());
+          }
+
+          // Persist profile/memory in background (non-blocking)
+          void persistProfileUpdates(ctx, userId, planned.profileUpdate, planned.profileReplace);
+          void persistMemoryNotes(ctx, userId, planned.memoryNotes, "voice");
+
+          // Phase 2: run agentic loop — pass empty assistantReply to avoid double-emit
+          const planWithoutReply: PlannerOutput = { ...planned, assistantReply: "" };
+          const { fragments, firstToolName } = await runAgenticLoop(
+            ctx, userId, text, planWithoutReply, "voice", sourceMessageId,
+          );
+
+          // Emit tool result fragments
+          for (const fragment of fragments.filter(Boolean)) {
+            emitText(fragment);
+          }
+
+          // Save full assistant message
+          const allParts = [planned.assistantReply.trim(), ...fragments].filter(Boolean);
+          const assistantText = allParts.join("\n\n").trim() || "I'm here.";
+          await ctx.runMutation(internal.chat.saveAssistantMessage, {
+            userId,
+            text: assistantText,
+            parsedType: firstToolName ?? planned.toolCalls[0]?.name,
+          });
+
           sendEvent("done", { ok: true });
         } catch (error) {
           sendEvent("error", { message: String(error) });
@@ -704,6 +334,170 @@ export const resolveApprovalAction = internalAction({
   },
 });
 
+const MAX_AGENTIC_ITERATIONS = 4;
+
+async function executeToolCallInLoop(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  toolCall: PlannerToolCall,
+  sourceMessageId: Id<"chatMessages">,
+  source: SourceType,
+): Promise<{ fragment: string; historyEntry: ToolHistoryEntry | null }> {
+  if (!(toolCall.name in toolRegistry)) {
+    return { fragment: "", historyEntry: null };
+  }
+
+  const definition = toolRegistry[toolCall.name];
+  const executionId = await ctx.runMutation(internal.chat.createToolExecutionRecord, {
+    userId,
+    toolName: toolCall.name,
+    toolArgsJson: JSON.stringify(toolCall.args ?? {}),
+    status: "pending",
+    sourceMessageId,
+  });
+
+  if (definition.approvalPolicy === "always") {
+    const humanSummary = definition.buildApprovalSummary(toolCall.args);
+    const approvalId = await ctx.runMutation(internal.approvals.createPendingApproval, {
+      userId,
+      toolName: toolCall.name,
+      humanSummary,
+      toolArgsJson: JSON.stringify(toolCall.args ?? {}),
+      approvalMode: source === "voice" ? "voice" : "hybrid",
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      requestedByMessageId: sourceMessageId,
+      toolExecutionId: executionId,
+    });
+    await ctx.runMutation(internal.chat.linkExecutionApproval, { executionId, approvalId });
+    await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+      executionId,
+      status: "awaiting_approval",
+    });
+    const fragment = `I'm ready to ${humanSummary.toLowerCase()}. Just say yes, or approve it from the side panel.`;
+    return {
+      fragment,
+      historyEntry: { toolName: toolCall.name, args: toolCall.args ?? {}, result: "awaiting_approval", success: false },
+    };
+  }
+
+  try {
+    await ctx.runMutation(internal.chat.updateToolExecutionStatus, { executionId, status: "running" });
+    const result = await executeToolCall(ctx, userId, toolCall.name, toolCall.args ?? {});
+    await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+      executionId,
+      status: "completed",
+      resultSummary: result.summary,
+      resultJson: JSON.stringify(result.result ?? {}),
+    });
+    return {
+      fragment: result.summary,
+      historyEntry: { toolName: toolCall.name, args: toolCall.args ?? {}, result: result.summary, success: true },
+    };
+  } catch (error) {
+    const errMsg = `I could not complete ${toolCall.name}: ${String(error)}`;
+    await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
+      executionId,
+      status: "failed",
+      error: String(error),
+    });
+    return {
+      fragment: errMsg,
+      historyEntry: { toolName: toolCall.name, args: toolCall.args ?? {}, result: errMsg, success: false },
+    };
+  }
+}
+
+async function runAgenticLoop(
+  ctx: ToolContext,
+  userId: Id<"users">,
+  userText: string,
+  initialPlan: PlannerOutput,
+  source: SourceType,
+  sourceMessageId: Id<"chatMessages">,
+): Promise<{ fragments: string[]; firstToolName?: string }> {
+  const fragments: string[] = [];
+  const toolHistory: ToolHistoryEntry[] = [];
+  const firstToolName = initialPlan.toolCalls[0]?.name;
+
+  // Issue 6: Always emit assistantReply first, regardless of whether there are tool calls
+  if (initialPlan.assistantReply.trim()) {
+    fragments.push(initialPlan.assistantReply.trim());
+  }
+
+  let pendingToolCalls = initialPlan.toolCalls;
+  let iteration = 0;
+
+  while (pendingToolCalls.length > 0 && iteration < MAX_AGENTIC_ITERATIONS) {
+    iteration++;
+    const iterationHistory: ToolHistoryEntry[] = [];
+
+    for (const toolCall of pendingToolCalls) {
+      const { fragment, historyEntry } = await executeToolCallInLoop(
+        ctx, userId, toolCall, sourceMessageId, source,
+      );
+      if (fragment) fragments.push(fragment);
+      if (historyEntry) {
+        iterationHistory.push(historyEntry);
+        toolHistory.push(historyEntry);
+      }
+    }
+
+    // At max iterations: stop without another LLM call
+    if (iteration >= MAX_AGENTIC_ITERATIONS) break;
+
+    // Only call LLM continuation if we have successful tool results to reason about
+    const successfulResults = iterationHistory.filter((e) => e.success);
+    if (successfulResults.length === 0) break;
+
+    const toolResultsBlock = successfulResults
+      .map((e) => `Tool: ${e.toolName}\nResult: ${e.result}`)
+      .join("\n\n");
+
+    try {
+      const continuation = await openai.chat.completions.create({
+        model: PLANNER_MODEL,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: source === "voice"
+              ? `${AGENTIC_CONTINUATION_PROMPT}${VOICE_ADDENDUM}`
+              : AGENTIC_CONTINUATION_PROMPT,
+          },
+          {
+            role: "user",
+            content: `Original user request: ${userText}\n\nTool results:\n${toolResultsBlock}`,
+          },
+        ],
+      });
+
+      const parsed = safeJsonParse<AgenticContinuationOutput>(
+        continuation.choices[0]?.message?.content ?? "",
+        { assistantReply: "", toolCalls: [], done: true },
+      );
+
+      // Replace mechanical tool summaries with LLM synthesis if we got a good reply
+      if (parsed.assistantReply.trim()) {
+        // Remove the raw tool result fragments from this iteration (last iterationHistory.length items)
+        // and replace with the synthesized reply
+        const itemsToReplace = iterationHistory.filter((e) => e.success).length;
+        fragments.splice(fragments.length - itemsToReplace, itemsToReplace, parsed.assistantReply.trim());
+      }
+
+      if (parsed.done || !parsed.toolCalls?.length) {
+        pendingToolCalls = [];
+      } else {
+        pendingToolCalls = parsePlannerToolCalls(parsed.toolCalls);
+      }
+    } catch {
+      // LLM continuation failed — keep raw tool summaries and stop
+      pendingToolCalls = [];
+    }
+  }
+
+  return { fragments, firstToolName };
+}
+
 async function handleUserMessage(
   ctx: ToolContext,
   userId: Id<"users">,
@@ -745,85 +539,50 @@ async function handleUserMessage(
     return assistantText;
   }
 
-  const plannerContext = await ctx.runQuery(internal.chat.getPlannerContext, { userId });
-  const planned = await planAssistantResponse(text, plannerContext);
+  // Semantic memory retrieval (non-fatal — falls back to FIFO in getPlannerContext)
+  let semanticMemories: Array<{ note: string; tags: string[]; confidence?: number }> | undefined;
+  try {
+    const queryEmbedding = await generateEmbedding(text);
+    semanticMemories = await ctx.runAction?.(internalChatApi.searchRelevantMemories, {
+      userId,
+      queryEmbedding,
+    });
+  } catch {
+    // Falls back to FIFO memory retrieval from getPlannerContext
+  }
 
-  await persistProfileUpdates(ctx, userId, planned.profileUpdate);
+  const plannerContext = await ctx.runQuery(internal.chat.getPlannerContext, { userId });
+  // Override FIFO memories with semantic results if available
+  const contextWithMemories = semanticMemories
+    ? { ...plannerContext, memories: semanticMemories }
+    : plannerContext;
+  const planned = await planAssistantResponse(text, contextWithMemories, source);
+
+  await persistProfileUpdates(ctx, userId, planned.profileUpdate, planned.profileReplace);
   await persistMemoryNotes(ctx, userId, planned.memoryNotes, source);
 
-  const assistantFragments: string[] = [];
-  if (planned.assistantReply.trim() && planned.toolCalls.length === 0) {
-    assistantFragments.push(planned.assistantReply.trim());
-  }
+  const { fragments, firstToolName } = await runAgenticLoop(
+    ctx, userId, text, planned, source, sourceMessageId,
+  );
 
-  for (const toolCall of planned.toolCalls) {
-    if (!(toolCall.name in toolRegistry)) continue;
-    const executionId = await ctx.runMutation(internal.chat.createToolExecutionRecord, {
-      userId,
-      toolName: toolCall.name,
-      toolArgsJson: JSON.stringify(toolCall.args ?? {}),
-      status: "pending",
-      sourceMessageId,
-    });
-
-    const definition = toolRegistry[toolCall.name];
-    if (definition.approvalPolicy === "always") {
-      const humanSummary = definition.buildApprovalSummary(toolCall.args);
-      const approvalId = await ctx.runMutation(internal.approvals.createPendingApproval, {
-        userId,
-        toolName: toolCall.name,
-        humanSummary,
-        toolArgsJson: JSON.stringify(toolCall.args ?? {}),
-        approvalMode: "hybrid",
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        requestedByMessageId: sourceMessageId,
-        toolExecutionId: executionId,
-      });
-      await ctx.runMutation(internal.chat.linkExecutionApproval, {
-        executionId,
-        approvalId,
-      });
-      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
-        executionId,
-        status: "awaiting_approval",
-      });
-      assistantFragments.push(
-        `I'm ready to ${humanSummary.toLowerCase()}. Just say yes, or approve it from the side panel.`,
-      );
-      continue;
-    }
-
-    try {
-      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
-        executionId,
-        status: "running",
-      });
-      const result = await executeToolCall(ctx, userId, toolCall.name, toolCall.args ?? {});
-      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
-        executionId,
-        status: "completed",
-        resultSummary: result.summary,
-        resultJson: JSON.stringify(result.result ?? {}),
-      });
-      assistantFragments.push(result.summary);
-    } catch (error) {
-      const message = `I could not complete ${toolCall.name}: ${String(error)}`;
-      await ctx.runMutation(internal.chat.updateToolExecutionStatus, {
-        executionId,
-        status: "failed",
-        error: String(error),
-      });
-      assistantFragments.push(message);
-    }
-  }
-
-  const assistantText = assistantFragments.filter(Boolean).join("\n\n").trim() || "I'm here.";
+  const assistantText = fragments.filter(Boolean).join("\n\n").trim() || "I'm here.";
   await ctx.runMutation(internal.chat.saveAssistantMessage, {
     userId,
     text: assistantText,
-    parsedType: planned.toolCalls[0]?.name,
+    parsedType: firstToolName ?? planned.toolCalls[0]?.name,
   });
   return assistantText;
+}
+
+async function generateEmbedding(text: string): Promise<number[]> {
+  if (!openaiEmbeddings) {
+    throw new Error("No OPENAI_API_KEY configured — skipping embeddings");
+  }
+  const response = await openaiEmbeddings.embeddings.create({
+    model: EMBEDDINGS_MODEL,
+    input: text.slice(0, 8192),
+  });
+  return response.data[0].embedding;
 }
 
 async function planAssistantResponse(
@@ -833,20 +592,25 @@ async function planAssistantResponse(
     memories: unknown[];
     integrations: unknown[];
     recentMessages: unknown[];
+    sessionSummary?: string;
   },
+  source: SourceType,
 ): Promise<PlannerOutput> {
   try {
+    const systemContent = buildPlannerSystemContent(
+      source,
+      {
+        sessionSummary: context.sessionSummary,
+        profile: (context.profile as { timezone?: string } | null | undefined) ?? undefined,
+      },
+      context,
+    );
+
     const completion = await openai.chat.completions.create({
       model: PLANNER_MODEL,
       response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content: `${PLANNER_SYSTEM_PROMPT}\n\nCurrent time context:\n${JSON.stringify({
-            nowIso: new Date().toISOString(),
-            defaultTimeZone: "America/Bogota",
-          })}\n\nCurrent context:\n${JSON.stringify(context)}`,
-        },
+        { role: "system", content: systemContent },
         { role: "user", content: userText },
       ],
     });
@@ -857,18 +621,14 @@ async function planAssistantResponse(
     });
     return {
       assistantReply: typeof parsed.assistantReply === "string" ? parsed.assistantReply : "",
-      toolCalls: Array.isArray(parsed.toolCalls)
-        ? parsed.toolCalls.filter(
-            (toolCall): toolCall is PlannerToolCall =>
-              !!toolCall &&
-              typeof toolCall === "object" &&
-              typeof (toolCall as PlannerToolCall).name === "string" &&
-              typeof (toolCall as PlannerToolCall).args === "object",
-          )
-        : [],
+      toolCalls: parsePlannerToolCalls(parsed.toolCalls),
       profileUpdate:
         parsed.profileUpdate && typeof parsed.profileUpdate === "object"
           ? parsed.profileUpdate
+          : undefined,
+      profileReplace:
+        parsed.profileReplace && typeof parsed.profileReplace === "object"
+          ? parsed.profileReplace
           : undefined,
       memoryNotes: Array.isArray(parsed.memoryNotes) ? parsed.memoryNotes : undefined,
     };
@@ -884,7 +644,25 @@ async function persistProfileUpdates(
   ctx: ToolContext,
   userId: Id<"users">,
   profileUpdate: PlannerOutput["profileUpdate"],
+  profileReplace: PlannerOutput["profileReplace"],
 ) {
+  // Handle explicit replacements first (higher specificity)
+  if (profileReplace) {
+    const hasReplace =
+      (profileReplace.goals?.length ?? 0) > 0 ||
+      (profileReplace.preferences?.length ?? 0) > 0 ||
+      (profileReplace.routines?.length ?? 0) > 0;
+    if (hasReplace) {
+      await ctx.runMutation(internal.chat.replaceProfileArraysFromAgent, {
+        userId,
+        goals: profileReplace.goals,
+        preferences: profileReplace.preferences,
+        routines: profileReplace.routines,
+      });
+    }
+  }
+
+  // Then handle additive updates
   if (!profileUpdate) return;
   const hasContent =
     !!profileUpdate.biography ||
@@ -915,208 +693,20 @@ async function persistMemoryNotes(
   if (!memoryNotes?.length) return;
   for (const memory of memoryNotes) {
     if (!memory?.note?.trim()) continue;
+    let embedding: number[] | undefined;
+    try {
+      embedding = await generateEmbedding(memory.note.trim());
+    } catch {
+      // Embedding failure is non-fatal — memory is still saved without embedding
+    }
     await ctx.runMutation(internal.chat.addMemoryFromAgent, {
       userId,
       note: memory.note.trim(),
       tags: Array.isArray(memory.tags) ? memory.tags.map(String) : [],
       confidence: typeof memory.confidence === "number" ? memory.confidence : undefined,
       source: source === "voice" ? "voice" : "chat",
+      embedding,
     });
-  }
-}
-
-async function executeToolCall(
-  ctx: ToolContext,
-  userId: Id<"users">,
-  toolName: ToolName,
-  args: Record<string, unknown>,
-) {
-  const tool = toolRegistry[toolName];
-  if (!tool) throw new Error(`Unsupported tool: ${toolName}`);
-
-  try {
-    const result = await tool.execute(ctx, userId, args);
-    if (toolName.startsWith("gmail.") || toolName.startsWith("calendar.")) {
-      await ctx.runMutation(internal.integrations.saveIntegrationSync, {
-        userId,
-        provider: "google",
-        lastSyncAt: Date.now(),
-        status: "connected",
-      });
-    }
-    return result;
-  } catch (error) {
-    if (toolName.startsWith("gmail.") || toolName.startsWith("calendar.")) {
-      const message = String(error);
-      await ctx.runMutation(internal.integrations.saveIntegrationSync, {
-        userId,
-        provider: "google",
-        lastSyncAt: Date.now(),
-        lastError: message,
-        status:
-          message.includes("401") || message.includes("invalid_grant") || message.includes("invalid_token")
-            ? "needs_reauth"
-            : "connected",
-      });
-    }
-    throw error;
-  }
-}
-
-function detectApprovalDecision(text: string): ApprovalDecision | null {
-  if (APPROVE_PATTERNS.some((pattern) => pattern.test(text))) return "approved";
-  if (REJECT_PATTERNS.some((pattern) => pattern.test(text))) return "rejected";
-  return null;
-}
-
-function detectChatCommand(text: string): ChatCommand | null {
-  const trimmed = text.trim().toLowerCase();
-  if (trimmed === "/cls") {
-    return { name: "clear_chat" };
-  }
-  return null;
-}
-
-function safeJsonParse<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function chunkText(text: string) {
-  const clean = text.trim();
-  if (!clean) return [] as string[];
-
-  const chunks: string[] = [];
-  let remaining = clean;
-  while (remaining.length > 0) {
-    if (remaining.length <= 120) {
-      chunks.push(remaining);
-      break;
-    }
-    const slice = remaining.slice(0, 120);
-    const splitAt = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf(", "), slice.lastIndexOf(" "));
-    const index = splitAt > 30 ? splitAt + 1 : 120;
-    chunks.push(remaining.slice(0, index));
-    remaining = remaining.slice(index).trimStart();
-  }
-  return chunks;
-}
-
-function normalizeDeliveryChannels(raw: unknown): Array<"in_app" | "gmail"> {
-  if (!Array.isArray(raw)) return ["in_app"];
-  const channels = raw
-    .map((value) => String(value))
-    .filter((value): value is "in_app" | "gmail" => value === "in_app" || value === "gmail");
-  return channels.length > 0 ? Array.from(new Set(channels)) : ["in_app"];
-}
-
-function extractTimeLabel(isoString: string) {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function normalizeCalendarEventTiming(startInput: unknown, endInput: unknown, timeZoneInput: unknown) {
-  const timeZone = typeof timeZoneInput === "string" && timeZoneInput.trim()
-    ? timeZoneInput.trim()
-    : "America/Bogota";
-
-  const startRaw = String(startInput ?? "").trim();
-  if (!startRaw) {
-    throw new Error("Calendar event is missing a start date/time.");
-  }
-
-  const startDate = new Date(startRaw);
-  if (Number.isNaN(startDate.getTime())) {
-    throw new Error(
-      `Calendar event start must be an ISO/RFC3339 date-time. Received: ${startRaw}`,
-    );
-  }
-
-  const endRaw = String(endInput ?? "").trim();
-  const endDate =
-    endRaw && !Number.isNaN(new Date(endRaw).getTime())
-      ? new Date(endRaw)
-      : new Date(startDate.getTime() + 60 * 60 * 1000);
-
-  return {
-    start: {
-      dateTime: toCalendarDateTime(startRaw, startDate),
-      timeZone,
-    },
-    end: {
-      dateTime: toCalendarDateTime(endRaw || endDate.toISOString(), endDate),
-      timeZone,
-    },
-    localStart: startDate,
-  };
-}
-
-function toCalendarDateTime(raw: string, parsed: Date) {
-  const trimmed = raw.trim();
-  if (trimmed && /([zZ]|[+-]\d{2}:\d{2})$/.test(trimmed)) {
-    return trimmed;
-  }
-  const yyyy = parsed.getFullYear();
-  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-  const dd = String(parsed.getDate()).padStart(2, "0");
-  const hh = String(parsed.getHours()).padStart(2, "0");
-  const min = String(parsed.getMinutes()).padStart(2, "0");
-  const sec = String(parsed.getSeconds()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
-}
-
-function extractEmailBodyPreview(message: Record<string, unknown>) {
-  const payload = message.payload as Record<string, unknown> | undefined;
-  const text = extractPlainTextFromPayload(payload)?.replace(/\s+/g, " ").trim();
-  if (!text) {
-    return undefined;
-  }
-  return text.length > 280 ? `${text.slice(0, 277)}...` : text;
-}
-
-function extractPlainTextFromPayload(payload?: Record<string, unknown>): string | undefined {
-  if (!payload) {
-    return undefined;
-  }
-
-  const mimeType = typeof payload.mimeType === "string" ? payload.mimeType : undefined;
-  const body = payload.body as Record<string, unknown> | undefined;
-  const data = typeof body?.data === "string" ? body.data : undefined;
-  const parts = Array.isArray(payload.parts) ? (payload.parts as Array<Record<string, unknown>>) : [];
-
-  if (mimeType === "text/plain" && data) {
-    return decodeBase64UrlUtf8(data);
-  }
-
-  for (const part of parts) {
-    const plain = extractPlainTextFromPayload(part);
-    if (plain) {
-      return plain;
-    }
-  }
-
-  if (data) {
-    return decodeBase64UrlUtf8(data);
-  }
-
-  return undefined;
-}
-
-function decodeBase64UrlUtf8(value: string) {
-  try {
-    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return Buffer.from(padded, "base64").toString("utf8");
-  } catch {
-    return "";
   }
 }
 
@@ -1144,7 +734,7 @@ export const saveAssistantMessage = internalMutation({
     relatedExecutionId: v.optional(v.id("toolExecutions")),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("chatMessages", {
+    const id = await ctx.db.insert("chatMessages", {
       userId: args.userId,
       text: args.text,
       createdAt: Date.now(),
@@ -1153,6 +743,17 @@ export const saveAssistantMessage = internalMutation({
       relatedApprovalId: args.relatedApprovalId,
       relatedExecutionId: args.relatedExecutionId,
     });
+
+    // Trigger rolling summarization when message count exceeds threshold
+    const messages = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+      .collect();
+    if (messages.length > 20) {
+      await ctx.scheduler.runAfter(0, internal.chat.summarizeOldMessages, { userId: args.userId });
+    }
+
+    return id;
   },
 });
 
@@ -1364,25 +965,12 @@ export const getToolExecutionById = internalQuery({
 export const getPlannerContext = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
-    const [profile, recentMessages, memories, integrations] = await Promise.all([
-      ctx.db
-        .query("userProfiles")
-        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-        .unique(),
-      ctx.db
-        .query("chatMessages")
-        .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
-        .order("desc")
-        .take(12),
-      ctx.db
-        .query("userMemories")
-        .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
-        .order("desc")
-        .take(10),
-      ctx.db
-        .query("integrations")
-        .withIndex("by_userId_status", (q) => q.eq("userId", args.userId))
-        .collect(),
+    const [profile, recentMessages, memories, integrations, latestSummary] = await Promise.all([
+      ctx.db.query("userProfiles").withIndex("by_userId", (q) => q.eq("userId", args.userId)).unique(),
+      ctx.db.query("chatMessages").withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId)).order("desc").take(12),
+      ctx.db.query("userMemories").withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId)).order("desc").take(10),
+      ctx.db.query("integrations").withIndex("by_userId_status", (q) => q.eq("userId", args.userId)).collect(),
+      ctx.db.query("sessionSummaries").withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId)).order("desc").first(),
     ]);
 
     return {
@@ -1392,18 +980,85 @@ export const getPlannerContext = internalQuery({
         text: message.text,
         parsedType: message.parsedType,
       })),
-      memories: memories.map((memory) => ({
-        note: memory.note,
-        tags: memory.tags,
-        confidence: memory.confidence,
-      })),
+      memories: memories.map((m) => ({ note: m.note, tags: m.tags, confidence: m.confidence })),
       integrations: integrations.map((integration) => ({
         provider: integration.provider,
         status: integration.status,
         accountLabel: integration.accountLabel,
         lastSyncAt: integration.lastSyncAt,
       })),
+      sessionSummary: latestSummary?.summaryText,
     };
+  },
+});
+
+// Vector search must run in action context — called from handleUserMessage/streamChat
+export const searchRelevantMemories = internalAction({
+  args: {
+    userId: v.id("users"),
+    queryEmbedding: v.array(v.float64()),
+  },
+  handler: async (ctx, args): Promise<MemoryContextItem[]> => {
+    const vectorResults = await ctx.vectorSearch("userMemories", "by_embedding", {
+      vector: args.queryEmbedding,
+      limit: 8,
+      filter: (q) => q.eq("userId", args.userId),
+    });
+
+    // Fetch full docs for vector results (vectorSearch only returns _id + _score)
+    const vectorDocs: Array<RecentMemoryRecord | null> = await Promise.all(
+      vectorResults.map((r) => ctx.runQuery(internalChatApi.getMemoryById, { memoryId: r._id })),
+    );
+
+    // Also fetch 3 most recent for guaranteed recency
+    const recentMemories: RecentMemoryRecord[] = await ctx.runQuery(internalChatApi.getRecentMemories, {
+      userId: args.userId,
+      limit: 3,
+    });
+
+    const vectorIds = new Set(vectorResults.map((r) => String(r._id)));
+    const recentExtra: RecentMemoryRecord[] = recentMemories.filter(
+      (r) => !vectorIds.has(String(r._id)),
+    );
+
+    return [...vectorDocs.filter((doc): doc is RecentMemoryRecord => doc !== null), ...recentExtra].map(
+      (m) => ({
+        note: m.note,
+        tags: m.tags,
+        confidence: m.confidence,
+      }),
+    );
+  },
+});
+
+export const getMemoryById = internalQuery({
+  args: { memoryId: v.id("userMemories") },
+  handler: async (ctx, args): Promise<RecentMemoryRecord | null> => {
+    const memory = await ctx.db.get(args.memoryId);
+    if (!memory) return null;
+    return {
+      _id: memory._id,
+      note: memory.note,
+      tags: memory.tags,
+      confidence: memory.confidence,
+    };
+  },
+});
+
+export const getRecentMemories = internalQuery({
+  args: { userId: v.id("users"), limit: v.number() },
+  handler: async (ctx, args): Promise<RecentMemoryRecord[]> => {
+    const results = await ctx.db
+      .query("userMemories")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(args.limit);
+    return results.map((m) => ({
+      _id: m._id,
+      note: m.note,
+      tags: m.tags,
+      confidence: m.confidence,
+    }));
   },
 });
 
@@ -1459,6 +1114,7 @@ export const addMemoryFromAgent = internalMutation({
     tags: v.array(v.string()),
     confidence: v.optional(v.number()),
     source: v.union(v.literal("chat"), v.literal("voice"), v.literal("manual"), v.literal("agent")),
+    embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("userMemories", {
@@ -1467,7 +1123,162 @@ export const addMemoryFromAgent = internalMutation({
       tags: args.tags,
       confidence: args.confidence,
       source: args.source,
+      embedding: args.embedding,
+      createdAt: Date.now(),
+      lastReferencedAt: Date.now(), // fixed: was never set on insert
+    });
+  },
+});
+
+// --- Profile replace (Issue 7) ---
+
+export const replaceProfileArraysFromAgent = internalMutation({
+  args: {
+    userId: v.id("users"),
+    goals: v.optional(v.array(v.string())),
+    preferences: v.optional(v.array(v.string())),
+    routines: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .unique();
+
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.goals !== undefined) patch.goals = args.goals.map((g) => g.trim()).filter(Boolean);
+    if (args.preferences !== undefined) patch.preferences = args.preferences.map((p) => p.trim()).filter(Boolean);
+    if (args.routines !== undefined) patch.routines = args.routines.map((r) => r.trim()).filter(Boolean);
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("userProfiles", {
+      userId: args.userId,
+      biography: undefined,
+      preferences: args.preferences ?? [],
+      goals: args.goals ?? [],
+      routines: args.routines ?? [],
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// --- Session summarization (Issue 1) ---
+
+export const getMessagesForSummary = internalQuery({
+  args: { userId: v.id("users"), limit: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("chatMessages")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+      .order("asc")
+      .take(args.limit);
+  },
+});
+
+export const saveSessionSummary = internalMutation({
+  args: {
+    userId: v.id("users"),
+    summaryText: v.string(),
+    coveredMessageCount: v.number(),
+    oldestMessageCreatedAt: v.number(),
+    newestMessageCreatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("sessionSummaries", {
+      userId: args.userId,
+      summaryText: args.summaryText,
+      coveredMessageCount: args.coveredMessageCount,
+      oldestMessageCreatedAt: args.oldestMessageCreatedAt,
+      newestMessageCreatedAt: args.newestMessageCreatedAt,
       createdAt: Date.now(),
     });
   },
 });
+
+export const deleteOldMessages = internalMutation({
+  args: {
+    userId: v.id("users"),
+    olderThanOrEqualCreatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const toDelete = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_userId_createdAt", (q) =>
+        q.eq("userId", args.userId).lte("createdAt", args.olderThanOrEqualCreatedAt),
+      )
+      .collect();
+
+    // Guard: skip messages linked to non-resolved approvals
+    const unresolved = await ctx.db
+      .query("pendingApprovals")
+      .withIndex("by_userId_status_createdAt", (q) =>
+        q.eq("userId", args.userId).eq("status", "pending"),
+      )
+      .collect();
+    const protectedMessageIds = new Set(
+      unresolved.map((a) => a.requestedByMessageId).filter(Boolean),
+    );
+
+    for (const msg of toDelete) {
+      if (!protectedMessageIds.has(msg._id)) {
+        await ctx.db.delete(msg._id);
+      }
+    }
+  },
+});
+
+export const summarizeOldMessages = internalAction({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const messages: Array<{ _id: string; role: string; text: string; createdAt: number }> =
+      await ctx.runQuery(internal.chat.getMessagesForSummary, {
+        userId: args.userId,
+        limit: 100,
+      });
+
+    if (messages.length < 20) return; // Not enough to summarize yet
+
+    const toSummarize = messages.slice(0, 20);
+    const transcript = toSummarize
+      .map((m) => `${m.role === "user" ? "User" : "Vimi"}: ${m.text}`)
+      .join("\n");
+
+    let summaryText: string;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: PLANNER_MODEL,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a memory compression assistant. Summarize the following conversation in 3-5 sentences. Capture: key topics discussed, decisions made, preferences and goals revealed, and any tasks or actions taken. Write in third person. Be factual and concise.",
+          },
+          { role: "user", content: transcript },
+        ],
+      });
+      summaryText = completion.choices[0]?.message?.content?.trim() ?? "";
+    } catch {
+      return; // Summarization failure is non-fatal
+    }
+
+    if (!summaryText) return;
+
+    await ctx.runMutation(internal.chat.saveSessionSummary, {
+      userId: args.userId,
+      summaryText,
+      coveredMessageCount: toSummarize.length,
+      oldestMessageCreatedAt: toSummarize[0].createdAt,
+      newestMessageCreatedAt: toSummarize[toSummarize.length - 1].createdAt,
+    });
+
+    await ctx.runMutation(internal.chat.deleteOldMessages, {
+      userId: args.userId,
+      olderThanOrEqualCreatedAt: toSummarize[toSummarize.length - 1].createdAt,
+    });
+  },
+});
+
