@@ -67,6 +67,7 @@ export function useVoiceChat() {
 
       tts.start();
       const chunker = createChunker((piece) => tts.sendText(piece));
+      let flushed = false;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -128,6 +129,7 @@ export function useVoiceChat() {
             } else if (event === "done") {
               chunker.flush();
               tts.flush();
+              flushed = true;
             } else if (event === "error") {
               console.error("[stream] server error", data.message);
             }
@@ -138,6 +140,11 @@ export function useVoiceChat() {
           console.error("[stream] failed", err);
         }
       } finally {
+        // Ensure ElevenLabs receives EOS even if the stream ended without a done event
+        if (!flushed) {
+          chunker.flush();
+          tts.flush();
+        }
         abortRef.current = null;
       }
     },
