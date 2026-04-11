@@ -14,28 +14,9 @@ export function useElevenLabsTTS() {
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const pendingChunksRef = useRef<string[]>([]);
   const socketOpenRef = useRef(false);
-  const fallbackBufferRef = useRef("");
-  const useBrowserFallbackRef = useRef(false);
   const receivedAudioRef = useRef(false);
   const flushPendingRef = useRef(false);
 
-  const speakWithBrowser = useCallback((text: string) => {
-    const content = text.replace(/\s+/g, " ").trim();
-    if (!content || typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setStatus("idle");
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(content);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onstart = () => setStatus("speaking");
-    utterance.onend = () => setStatus("idle");
-    utterance.onerror = () => setStatus("error");
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
-  // Must be called synchronously inside a user gesture to unlock audio
   const ensureAudioContext = useCallback(() => {
     if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
       const Ctx =
@@ -52,8 +33,8 @@ export function useElevenLabsTTS() {
     if (ctx.state === "suspended") {
       try {
         await ctx.resume();
-      } catch (e) {
-        console.warn("[TTS] AudioContext resume failed", e);
+      } catch (error) {
+        console.warn("[TTS] AudioContext resume failed", error);
       }
     }
     return ctx;
@@ -64,8 +45,10 @@ export function useElevenLabsTTS() {
       const ctx = await resumeAudioContext();
       if (ctx.state !== "running") {
         console.warn("[TTS] AudioContext not running, skipping chunk. State:", ctx.state);
+        setStatus("error");
         return;
       }
+
       try {
         const binary = atob(base64Audio);
         const bytes = new Uint8Array(binary.length);
@@ -92,24 +75,23 @@ export function useElevenLabsTTS() {
         };
 
         receivedAudioRef.current = true;
-        fallbackBufferRef.current = "";
         setStatus("speaking");
-      } catch (err) {
-        console.error("[TTS] decodeAudioData failed", err);
+      } catch (error) {
+        console.error("[TTS] decodeAudioData failed", error);
+        setStatus("error");
       }
     },
     [resumeAudioContext],
   );
 
   const start = useCallback(() => {
-    fallbackBufferRef.current = "";
+    pendingChunksRef.current = [];
     receivedAudioRef.current = false;
     flushPendingRef.current = false;
-    useBrowserFallbackRef.current = !API_KEY || API_KEY.startsWith("sk_placeholder");
 
-    if (useBrowserFallbackRef.current) {
-      console.warn("[TTS] ElevenLabs key missing, using browser speech fallback");
-      setStatus("idle");
+    if (!API_KEY || API_KEY.startsWith("sk_placeholder")) {
+      console.error("[TTS] Missing VITE_ELEVENLABS_API_KEY");
+      setStatus("error");
       return;
     }
 
@@ -117,8 +99,6 @@ export function useElevenLabsTTS() {
       return;
     }
 
-    // Create AND resume AudioContext synchronously here (inside user gesture chain)
-    // This is critical — browsers block audio until a user gesture unlocks it.
     const ctx = ensureAudioContext();
     if (ctx.state === "suspended") {
       void ctx.resume();
@@ -127,31 +107,32 @@ export function useElevenLabsTTS() {
 
     const url =
       `wss://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream-input` +
-      `?model_id=${MODEL}&output_format=mp3_44100_128&xi_api_key=${API_KEY}`;
+      `?model_id=${MODEL}&output_format=mp3_44100_128`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
       socketOpenRef.current = true;
-      // Send BOS (beginning of stream) message with voice settings
       ws.send(
         JSON.stringify({
           text: " ",
+          xi_api_key: API_KEY,
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.8,
             speed: 1.0,
           },
+          generation_config: {
+            chunk_length_schedule: [120, 160, 220, 280],
+          },
         }),
       );
 
-      // Drain any text that arrived before the socket opened
       for (const chunk of pendingChunksRef.current) {
         ws.send(JSON.stringify({ text: chunk }));
       }
       pendingChunksRef.current = [];
 
-      // If flush was requested before socket opened, send it now
       if (flushPendingRef.current) {
         ws.send(JSON.stringify({ text: "" }));
         flushPendingRef.current = false;
@@ -165,22 +146,23 @@ export function useElevenLabsTTS() {
           isFinal?: boolean;
           message?: string;
         };
+        if (data.message) {
+          console.warn("[TTS] ElevenLabs message:", data.message);
+        }
         if (data.audio) {
           void scheduleAudio(data.audio);
         }
         if (data.isFinal) {
           socketOpenRef.current = false;
         }
-      } catch (err) {
-        console.error("[TTS] parse message", err);
+      } catch (error) {
+        console.error("[TTS] parse message", error);
+        setStatus("error");
       }
     };
 
-    ws.onerror = (err) => {
-      console.error("[TTS] websocket error", err);
-      if (!receivedAudioRef.current) {
-        useBrowserFallbackRef.current = true;
-      }
+    ws.onerror = (error) => {
+      console.error("[TTS] websocket error", error);
       setStatus("error");
     };
 
@@ -188,27 +170,20 @@ export function useElevenLabsTTS() {
       console.log("[TTS] websocket closed", event.code, event.reason);
       socketOpenRef.current = false;
       wsRef.current = null;
-
-      if (!receivedAudioRef.current && fallbackBufferRef.current.trim()) {
-        speakWithBrowser(fallbackBufferRef.current);
-        fallbackBufferRef.current = "";
+      if (!receivedAudioRef.current) {
+        setStatus("error");
         return;
       }
-
       if (activeSourcesRef.current.size === 0) {
         setStatus("idle");
       }
     };
-  }, [ensureAudioContext, scheduleAudio, speakWithBrowser]);
+  }, [ensureAudioContext, scheduleAudio]);
 
   const sendText = useCallback((text: string) => {
     if (!text) return;
 
     const payload = text.endsWith(" ") ? text : `${text} `;
-    fallbackBufferRef.current += payload;
-
-    if (useBrowserFallbackRef.current) return;
-
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ text: payload }));
@@ -218,20 +193,13 @@ export function useElevenLabsTTS() {
   }, []);
 
   const flush = useCallback(() => {
-    if (useBrowserFallbackRef.current) {
-      speakWithBrowser(fallbackBufferRef.current);
-      fallbackBufferRef.current = "";
-      return;
-    }
-
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ text: "" }));
     } else {
-      // Socket still connecting — mark flush pending so onopen sends it
       flushPendingRef.current = true;
     }
-  }, [speakWithBrowser]);
+  }, []);
 
   const stop = useCallback(() => {
     if (wsRef.current) {
@@ -242,16 +210,11 @@ export function useElevenLabsTTS() {
       }
       wsRef.current = null;
     }
+
     socketOpenRef.current = false;
     pendingChunksRef.current = [];
-    fallbackBufferRef.current = "";
-    useBrowserFallbackRef.current = false;
     receivedAudioRef.current = false;
     flushPendingRef.current = false;
-
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
 
     for (const source of activeSourcesRef.current) {
       try {
