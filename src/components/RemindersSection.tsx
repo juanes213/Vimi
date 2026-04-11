@@ -35,8 +35,8 @@ export function RemindersSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Pending reminders</h2>
-          <p className="text-sm leading-6 text-stone-500">
+          <h2 className="text-2xl font-semibold text-white">Pending reminders</h2>
+          <p className="text-sm leading-6 text-slate-400">
             {pending.length} to attend / {completed.length} resolved
           </p>
         </div>
@@ -83,8 +83,8 @@ export function RemindersSection() {
       <div className="flex flex-col gap-3">
         {reminders.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">No reminders saved yet.</p>
-            <p className="mt-2 text-sm leading-6 text-stone-500">
+            <p className="text-lg font-semibold text-white">No reminders saved yet.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
               This space works best when it nudges you calmly instead of sounding like an alarm.
             </p>
           </div>
@@ -120,13 +120,13 @@ export function RemindersSection() {
             <div className="flex-1">
               <p
                 className={cn(
-                  "text-sm font-semibold text-stone-900",
-                  reminder.status === "completed" && "text-stone-400 line-through",
+                  "text-sm font-semibold text-white",
+                  reminder.status === "completed" && "text-slate-500 line-through",
                 )}
               >
-                {reminder.text}
-              </p>
-              <p className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
+              {reminder.text}
+            </p>
+              <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
                 <span className="status-chip">date / {formatDate(reminder.date)}</span>
                 {reminder.time && <span className="status-chip">time / {reminder.time}</span>}
               </p>
@@ -134,7 +134,7 @@ export function RemindersSection() {
 
             <button
               onClick={() => removeReminder({ id: reminder._id })}
-              className="text-sm text-stone-300 transition-colors hover:text-red-400"
+              className="text-sm text-slate-500 transition-colors hover:text-red-300"
             >
               x
             </button>

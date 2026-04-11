@@ -29,9 +29,9 @@ export function getCurrentMonth(): string {
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-100 text-red-700 border-red-200",
-  medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  low: "bg-green-100 text-green-700 border-green-200",
+  high: "border-red-300/30 bg-red-400/12 text-red-100",
+  medium: "border-amber-300/30 bg-amber-300/14 text-amber-100",
+  low: "border-emerald-300/30 bg-emerald-400/12 text-emerald-100",
 };
 
 export const FREQUENCY_OPTIONS = [

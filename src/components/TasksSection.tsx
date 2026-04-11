@@ -40,8 +40,8 @@ export function TasksSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Today's focus</h2>
-          <p className="text-sm leading-6 text-stone-500">
+          <h2 className="text-2xl font-semibold text-white">Today's focus</h2>
+          <p className="text-sm leading-6 text-slate-400">
             {pending.length} pending / {completed.length} completed
           </p>
         </div>
@@ -97,8 +97,8 @@ export function TasksSection() {
       <div className="flex flex-col gap-3">
         {tasks.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">No tasks yet.</p>
-            <p className="mt-2 text-sm leading-6 text-stone-500">
+            <p className="text-lg font-semibold text-white">No tasks yet.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
               Start with one small decision and let Vimi turn it into progress.
             </p>
           </div>
@@ -151,8 +151,8 @@ function TaskCard({
         className={cn(
           "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
           task.status === "completed"
-            ? "border-stone-900 bg-stone-900 text-white"
-            : "border-stone-300 bg-white/70 text-transparent hover:border-stone-500",
+            ? "border-violet-300/40 bg-violet-400/90 text-white"
+            : "border-white/18 bg-white/10 text-transparent hover:border-white/28",
         )}
       >
         <span className="text-[10px] font-semibold uppercase">
@@ -163,21 +163,21 @@ function TaskCard({
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            "text-sm font-semibold text-stone-900",
-            task.status === "completed" && "text-stone-400 line-through",
+            "text-sm font-semibold text-white",
+            task.status === "completed" && "text-slate-500 line-through",
           )}
         >
           {task.title}
         </p>
         {task.description && (
-          <p className="mt-1 text-sm leading-6 text-stone-500">{task.description}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {task.priority && (
             <span
               className={cn(
                 "rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.16em]",
-                PRIORITY_COLORS[task.priority] ?? "bg-gray-100 text-gray-600",
+                PRIORITY_COLORS[task.priority] ?? "border-white/10 bg-white/10 text-slate-200",
               )}
             >
               {task.priority}
@@ -188,7 +188,7 @@ function TaskCard({
         </div>
       </div>
 
-      <button onClick={onDelete} className="text-sm text-stone-300 transition-colors hover:text-red-400">
+      <button onClick={onDelete} className="text-sm text-slate-500 transition-colors hover:text-red-300">
         x
       </button>
     </div>
