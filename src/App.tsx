@@ -29,8 +29,6 @@ const COMPANION_PILLARS = [
   },
 ];
 
-const NAV_PAGES: Section[] = ["chat", "tasks", "reminders", "payments", "budgets", "events"];
-
 function mapAssistantMessageToSection(parsedType?: string): Section | null {
   if (!parsedType) return null;
   if (parsedType === "internal.createTask") return "tasks";
@@ -631,7 +629,7 @@ function CentralOrb({
             className={cn(
               "absolute inset-0 rounded-full",
               mode === "listening" && "animate-ping opacity-15 ring-4 ring-fuchsia-300/60",
-              mode === "speaking"  && "animate-ping opacity-12 ring-4 ring-cyan-300/50",
+              mode === "speaking"  && "animate-ping opacity-[0.12] ring-4 ring-cyan-300/50",
               mode === "thinking"  && "animate-pulse opacity-15 ring-4 ring-violet-300/50",
             )}
             style={{ animationDuration: mode === "thinking" ? "1.4s" : "1.2s" }}
