@@ -49,13 +49,13 @@ export function SignInForm() {
         <button className="auth-button" type="submit" disabled={submitting}>
           {submitting ? "Signing in…" : flow === "signIn" ? "Sign in" : "Create account"}
         </button>
-        <div className="text-center text-sm text-stone-500">
+        <div className="text-center font-['DM_Sans'] text-sm font-light text-[rgba(100,85,160,0.6)]">
           <span>
             {flow === "signIn" ? "Don't have an account? " : "Already have an account? "}
           </span>
           <button
             type="button"
-            className="font-medium text-stone-900 transition-colors hover:text-[#bf6b4f]"
+            className="font-['Outfit'] text-sm font-light text-[rgba(180,150,255,0.8)] transition-colors hover:text-[rgba(0,255,180,0.8)]"
             onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
           >
             {flow === "signIn" ? "Create account" : "Sign in"}
@@ -63,10 +63,10 @@ export function SignInForm() {
         </div>
       </form>
 
-      <div className="my-5 flex items-center justify-center">
-        <hr className="grow border-stone-200/70" />
-        <span className="mx-4 text-xs uppercase tracking-[0.24em] text-stone-400">or</span>
-        <hr className="grow border-stone-200/70" />
+      <div className="my-5 flex items-center justify-center gap-4">
+        <div className="h-px flex-1 bg-[rgba(120,80,255,0.15)]" />
+        <span className="font-['Outfit'] text-[10px] uppercase tracking-[0.22em] text-[rgba(100,85,160,0.5)]">or</span>
+        <div className="h-px flex-1 bg-[rgba(120,80,255,0.15)]" />
       </div>
 
       <button className="secondary-button w-full" onClick={() => void signIn("anonymous")}>

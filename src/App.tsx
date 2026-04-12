@@ -94,18 +94,19 @@ function AuthPage() {
       <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="panel-surface fade-rise p-8 sm:p-10 lg:p-12">
           <span className="status-chip">Vimi / life assistant</span>
-          <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
-            Your life, decided by you. Executed by Vimi.
+          <h1 className="mt-6 max-w-3xl text-4xl font-light leading-tight text-white sm:text-5xl">
+            Your life, decided by you.{" "}
+            <em className="italic text-[rgba(200,180,255,0.8)]">Executed by Vimi.</em>
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+          <p className="mt-5 max-w-2xl font-['DM_Sans'] text-base font-light leading-7 text-[rgba(100,85,160,0.7)] sm:text-lg">
             Vimi should feel like an intelligent companion with agency: warm, clear, and ready to
             turn intent into motion.
           </p>
           <div className="mt-8 grid gap-3 md:grid-cols-3">
             {COMPANION_PILLARS.map((pillar) => (
               <article key={pillar.title} className="panel-soft p-4">
-                <p className="text-sm font-semibold text-white">{pillar.title}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">{pillar.body}</p>
+                <p className="font-['Outfit'] text-sm font-medium tracking-wide text-white">{pillar.title}</p>
+                <p className="mt-2 font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.7)]">{pillar.body}</p>
               </article>
             ))}
           </div>
@@ -118,8 +119,8 @@ function AuthPage() {
               <div className="absolute inset-[22%] rounded-full border border-white/20 bg-white/8" />
             </div>
             <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Welcome to Vimi</p>
-              <h2 className="mt-1 text-3xl font-semibold text-white">Step into your orbit</h2>
+              <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.26em] text-[rgba(0,255,180,0.55)]">Welcome to Vimi</p>
+              <h2 className="mt-1 text-3xl font-light text-white">Step into your orbit</h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300">
                 A calmer, more immersive entry point built around Vimi instead of around a dashboard.
               </p>
