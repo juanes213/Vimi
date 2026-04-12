@@ -12,6 +12,7 @@ import { TasksSection } from "./components/TasksSection";
 import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
 import { useVoiceChat, type VoiceMode } from "./hooks/useVoiceChat";
+import { useElectronBridge } from "./hooks/useElectronBridge";
 import { cn } from "./lib/utils";
 
 const COMPANION_PILLARS = [
@@ -145,6 +146,7 @@ function Dashboard() {
   const rejectPendingApproval = useAction(api.approvals.rejectPendingApproval);
   const userName = user?.email?.split("@")[0] ?? "you";
   const voice = useVoiceChat();
+  const electron = useElectronBridge();
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     day: "numeric",
@@ -216,7 +218,11 @@ function Dashboard() {
 
   const handleConnectGoogle = async () => {
     const url = await getGoogleConnectUrl({ returnTo: window.location.href });
-    window.location.href = url;
+    if (electron.isElectron) {
+      void electron.openExternal(url);
+    } else {
+      window.location.href = url;
+    }
   };
 
   const handleDisconnectGoogle = async () => {
@@ -267,9 +273,9 @@ function Dashboard() {
             onDisconnectGoogle={handleDisconnectGoogle}
             onApprove={handleApprove}
             onReject={handleReject}
-            isElectron={false}
-            getAutoStart={async () => false}
-            setAutoStart={async () => {}}
+            isElectron={electron.isElectron}
+            getAutoStart={electron.getAutoStart}
+            setAutoStart={electron.setAutoStart}
           />
         </div>
 
@@ -398,9 +404,9 @@ function SideInfoPanel({
   onDisconnectGoogle,
   onApprove,
   onReject,
-  isElectron: _isElectron,
-  getAutoStart: _getAutoStart,
-  setAutoStart: _setAutoStart,
+  isElectron,
+  getAutoStart,
+  setAutoStart,
 }: {
   activeDetail: (typeof SECTION_DETAILS)[Section];
   activeMode: VoiceMode;
@@ -461,6 +467,9 @@ function SideInfoPanel({
           >
             {autoListen ? "auto-listen on" : "auto-listen off"}
           </button>
+          {isElectron && (
+            <AutoStartToggle getAutoStart={getAutoStart} setAutoStart={setAutoStart} />
+          )}
           <div className="mt-4">
             <SignOutButton />
           </div>
@@ -769,6 +778,39 @@ function StatusStrip() {
         </div>
       ))}
     </div>
+  );
+}
+
+function AutoStartToggle({
+  getAutoStart,
+  setAutoStart,
+}: {
+  getAutoStart: () => Promise<boolean>;
+  setAutoStart: (enabled: boolean) => Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    void getAutoStart().then(setEnabled);
+  }, [getAutoStart]);
+
+  const toggle = async () => {
+    const next = !enabled;
+    setEnabled(next);
+    await setAutoStart(next);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={cn(
+        "status-chip mt-2 cursor-pointer transition-colors",
+        enabled && "!border-[rgba(140,95,255,0.4)] !bg-[rgba(140,95,255,0.1)] !text-[rgba(200,180,255,0.9)]",
+      )}
+    >
+      {enabled ? "start with Windows on" : "start with Windows off"}
+    </button>
   );
 }
 
