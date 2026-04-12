@@ -40,8 +40,8 @@ export function TasksSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-white">Today's focus</h2>
-          <p className="text-sm leading-6 text-slate-400">
+          <h2 className="text-3xl text-white">Today's focus</h2>
+          <p className="font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.65)]">
             {pending.length} pending / {completed.length} completed
           </p>
         </div>
@@ -97,8 +97,8 @@ export function TasksSection() {
       <div className="flex flex-col gap-3">
         {tasks.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-white">No tasks yet.</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+            <p className="font-['Cormorant_Garamond'] text-xl font-light text-[rgba(160,145,210,0.7)]">No tasks yet.</p>
+            <p className="mt-2 font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.55)]">
               Start with one small decision and let Vimi turn it into progress.
             </p>
           </div>
@@ -151,8 +151,8 @@ function TaskCard({
         className={cn(
           "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
           task.status === "completed"
-            ? "border-violet-300/40 bg-violet-400/90 text-white"
-            : "border-white/18 bg-white/10 text-transparent hover:border-white/28",
+            ? "border-[rgba(0,255,180,0.4)] bg-[rgba(0,255,180,0.12)] text-[rgba(0,255,180,0.9)]"
+            : "border-[rgba(120,80,255,0.3)] bg-[rgba(120,80,255,0.06)] text-transparent hover:border-[rgba(120,80,255,0.5)]",
         )}
       >
         <span className="text-[10px] font-semibold uppercase">
@@ -163,8 +163,8 @@ function TaskCard({
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            "text-sm font-semibold text-white",
-            task.status === "completed" && "text-slate-500 line-through",
+            "text-sm text-white",
+            task.status === "completed" && "text-[rgba(100,85,160,0.5)] line-through decoration-[rgba(120,80,255,0.3)]",
           )}
         >
           {task.title}
@@ -188,7 +188,7 @@ function TaskCard({
         </div>
       </div>
 
-      <button onClick={onDelete} className="text-sm text-slate-500 transition-colors hover:text-red-300">
+      <button onClick={onDelete} className="font-['Outfit'] text-xs tracking-widest text-[rgba(100,85,160,0.4)] transition-colors hover:text-[rgba(255,80,100,0.7)]">
         x
       </button>
     </div>
