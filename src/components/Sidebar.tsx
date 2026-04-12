@@ -116,7 +116,6 @@ export function Sidebar({ active, onChange }: SidebarProps) {
       {/* Nav items */}
       <nav className="flex flex-1 flex-col items-center gap-1">
         {NAV_ITEMS.map((item) => {
-          const Icon = item.icon as ComponentType<SVGProps<SVGSVGElement>>;
           const isActive = active === item.id;
           return (
             <button
@@ -136,12 +135,12 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                   className="absolute -left-[9px] top-1/4 h-1/2 w-0.5 rounded-r-full"
                   style={{
                     background: "var(--cyan)",
-                    boxShadow: "0 0 8px var(--cyan), 0 0 16px rgba(0,255,180,0.3)",
+                    boxShadow: "0 0 8px var(--cyan), 0 0 16px var(--cyan-dim)",
                     animation: "glowPulse 3s ease-in-out infinite",
                   }}
                 />
               )}
-              <Icon
+              <item.icon
                 className="h-4 w-4"
                 style={{ color: isActive ? "var(--cyan)" : "rgba(140,120,200,0.45)" }}
               />
