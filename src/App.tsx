@@ -121,7 +121,7 @@ function AuthPage() {
             <div>
               <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.26em] text-[rgba(0,255,180,0.55)]">Welcome to Vimi</p>
               <h2 className="mt-1 text-3xl font-light text-white">Step into your orbit</h2>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300">
+              <p className="mt-2 max-w-sm text-sm leading-6 text-[rgba(180,160,230,0.65)]">
                 A calmer, more immersive entry point built around Vimi instead of around a dashboard.
               </p>
             </div>
