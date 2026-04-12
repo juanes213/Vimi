@@ -431,7 +431,7 @@ function SideInfoPanel({
       <div className="flex flex-col gap-3">
         <div className="panel-soft p-4">
           <p className="hud-label">Today</p>
-          <p className="mt-3 text-sm leading-7 text-slate-200">{today}</p>
+          <p className="mt-3 text-sm leading-7 text-[rgba(228,224,255,0.9)]">{today}</p>
         </div>
 
         <div className="panel-soft p-4">
@@ -443,7 +443,7 @@ function SideInfoPanel({
             />
             <div>
               <p className="text-sm font-semibold text-white">{activeDetail.label}</p>
-              <p className="mt-1 text-sm text-slate-400">{activeMode}</p>
+              <p className="mt-1 text-sm text-[rgba(170,150,230,0.7)]">{activeMode}</p>
             </div>
           </div>
         </div>
@@ -456,7 +456,7 @@ function SideInfoPanel({
             onClick={onToggleAutoListen}
             className={cn(
               "status-chip mt-4 cursor-pointer transition-colors",
-              autoListen && "!border-cyan-300/40 !bg-cyan-400/10 !text-cyan-200",
+              autoListen && "!border-[rgba(0,255,180,0.4)] !bg-[rgba(0,255,180,0.08)] !text-[rgba(0,255,180,0.85)]",
             )}
           >
             {autoListen ? "auto-listen on" : "auto-listen off"}
@@ -473,7 +473,7 @@ function SideInfoPanel({
               ? googleIntegration.accountLabel ?? "Connected"
               : "Not connected"}
           </p>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-[rgba(170,150,230,0.7)]">
             {googleIntegration?.status === "connected"
               ? "Gmail and Calendar are available for Vimi."
               : "Connect Google so Vimi can read Gmail and manage Calendar."}
@@ -494,15 +494,15 @@ function SideInfoPanel({
           </div>
 
           {pendingApprovals.length === 0 ? (
-            <p className="mt-4 text-sm leading-6 text-slate-400">
+            <p className="mt-4 text-sm leading-6 text-[rgba(170,150,230,0.7)]">
               When Vimi needs approval for something high-risk, it will appear here.
             </p>
           ) : (
             <div className="mt-4 space-y-3">
               {pendingApprovals.slice(0, 4).map((approval) => (
-                <div key={approval._id} className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
+                <div key={approval._id} className="rounded-3xl border border-[rgba(120,80,255,0.15)] bg-[rgba(120,80,255,0.05)] p-3">
                   <p className="text-sm font-medium text-white">{approval.humanSummary}</p>
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[rgba(100,85,160,0.55)]">
                     {approval.toolName}
                   </p>
                   <div className="mt-3 flex gap-2">
