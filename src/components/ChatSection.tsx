@@ -33,12 +33,16 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-2">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3">
         <div className="flex min-h-full flex-col gap-3 py-3">
           {!hasConversation && (
             <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-              <p className="text-sm font-medium text-slate-300">Your conversation will appear here.</p>
-              <p className="mt-1 text-xs text-slate-500">Tap the orb to start talking.</p>
+              <p className="font-['Cormorant_Garamond'] text-lg font-light text-[rgba(160,145,210,0.6)]">
+                Your conversation will appear here.
+              </p>
+              <p className="mt-1 font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(100,85,160,0.45)]">
+                Tap the orb to begin
+              </p>
             </div>
           )}
 
@@ -47,37 +51,42 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
               key={msg._id}
               className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
             >
-              <div
-                className={cn(
-                  "max-w-[88%] rounded-[20px] px-3.5 py-2.5 text-sm shadow-sm",
-                  msg.role === "user"
-                    ? "rounded-br-sm bg-white/12 text-white ring-1 ring-white/12"
-                    : "rounded-bl-sm border border-white/10 bg-[#120c26]/80 text-slate-200",
-                )}
-              >
-                <p className="leading-6">
-                  {msg.text.replace(/\{[\s\S]*"action"[\s\S]*\}/, "").trim() || msg.text}
+              <div className="flex max-w-[88%] flex-col gap-1">
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-2.5 text-sm font-light leading-relaxed",
+                    msg.role === "user"
+                      ? "rounded-br-sm bg-[rgba(0,255,180,0.07)] text-[rgba(220,255,245,0.9)] ring-1 ring-[rgba(0,255,180,0.15)]"
+                      : "rounded-bl-sm bg-[rgba(120,80,255,0.07)] text-[rgba(170,150,230,0.85)] ring-1 ring-[rgba(120,80,255,0.16)]",
+                  )}
+                >
+                  <p>{msg.text.replace(/\{[\s\S]*"action"[\s\S]*\}/, "").trim() || msg.text}</p>
+                </div>
+                <p
+                  className={cn(
+                    "font-['Outfit'] text-[9px] uppercase tracking-[0.14em]",
+                    msg.role === "user"
+                      ? "text-right text-[rgba(0,255,180,0.35)]"
+                      : "text-[rgba(120,80,255,0.45)]",
+                  )}
+                >
+                  {msg.role === "user" ? "You" : "Vimi"}
+                  {msg.parsedType && (
+                    <span className="ml-2 text-[rgba(100,85,160,0.5)]">
+                      · {msg.parsedType.replace("create_", "created — ")}
+                    </span>
+                  )}
                 </p>
-                {msg.parsedType && (
-                  <p
-                    className={cn(
-                      "mt-1.5 text-[10px] uppercase tracking-[0.2em]",
-                      msg.role === "user" ? "text-white/50" : "text-slate-500",
-                    )}
-                  >
-                    {msg.parsedType.replace("create_", "created - ")}
-                  </p>
-                )}
               </div>
             </div>
           ))}
 
           {showLiveAssistant && (
             <div className="flex justify-start">
-              <div className="max-w-[88%] rounded-[20px] rounded-bl-sm border border-white/10 bg-[#120c26]/80 px-3.5 py-2.5 text-sm text-slate-200 shadow-sm">
-                <p className="leading-6">
+              <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-[rgba(120,80,255,0.07)] px-4 py-2.5 text-sm font-light leading-relaxed text-[rgba(170,150,230,0.85)] ring-1 ring-[rgba(120,80,255,0.16)]">
+                <p>
                   {liveText}
-                  <span className="ml-1 inline-block h-3.5 w-[2px] animate-pulse bg-slate-400 align-middle" />
+                  <span className="ml-1 inline-block h-3.5 w-px animate-pulse bg-[rgba(0,255,180,0.7)] align-middle" />
                 </p>
               </div>
             </div>
