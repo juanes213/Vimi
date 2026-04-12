@@ -35,8 +35,8 @@ export function RemindersSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-white">Pending reminders</h2>
-          <p className="text-sm leading-6 text-slate-400">
+          <h2 className="text-3xl text-white">Pending reminders</h2>
+          <p className="font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.65)]">
             {pending.length} to attend / {completed.length} resolved
           </p>
         </div>
@@ -83,8 +83,8 @@ export function RemindersSection() {
       <div className="flex flex-col gap-3">
         {reminders.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-white">No reminders saved yet.</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+            <p className="font-['Cormorant_Garamond'] text-xl font-light text-[rgba(160,145,210,0.7)]">No reminders saved yet.</p>
+            <p className="mt-2 font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.55)]">
               This space works best when it nudges you calmly instead of sounding like an alarm.
             </p>
           </div>
@@ -108,8 +108,8 @@ export function RemindersSection() {
               className={cn(
                 "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
                 reminder.status === "completed"
-                  ? "border-stone-900 bg-stone-900 text-white"
-                  : "border-stone-300 bg-white/70 text-transparent hover:border-stone-500",
+                  ? "border-[rgba(0,255,180,0.4)] bg-[rgba(0,255,180,0.12)] text-[rgba(0,255,180,0.9)]"
+                  : "border-[rgba(120,80,255,0.3)] bg-[rgba(120,80,255,0.06)] text-transparent hover:border-[rgba(120,80,255,0.5)]",
               )}
             >
               <span className="text-[10px] font-semibold uppercase">
@@ -120,8 +120,8 @@ export function RemindersSection() {
             <div className="flex-1">
               <p
                 className={cn(
-                  "text-sm font-semibold text-white",
-                  reminder.status === "completed" && "text-slate-500 line-through",
+                  "text-sm text-white",
+                  reminder.status === "completed" && "text-[rgba(100,85,160,0.5)] line-through decoration-[rgba(120,80,255,0.3)]",
                 )}
               >
               {reminder.text}
@@ -134,7 +134,7 @@ export function RemindersSection() {
 
             <button
               onClick={() => removeReminder({ id: reminder._id })}
-              className="text-sm text-slate-500 transition-colors hover:text-red-300"
+              className="font-['Outfit'] text-xs tracking-widest text-[rgba(100,85,160,0.4)] transition-colors hover:text-[rgba(255,80,100,0.7)]"
             >
               x
             </button>
