@@ -126,7 +126,7 @@ export function RemindersSection() {
               >
               {reminder.text}
             </p>
-              <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
+              <p className="mt-2 flex flex-wrap gap-2 text-xs text-[rgba(100,85,160,0.55)]">
                 <span className="status-chip">date / {formatDate(reminder.date)}</span>
                 {reminder.time && <span className="status-chip">time / {reminder.time}</span>}
               </p>

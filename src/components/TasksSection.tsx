@@ -170,14 +170,14 @@ function TaskCard({
           {task.title}
         </p>
         {task.description && (
-          <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
+          <p className="mt-1 text-sm leading-6 text-[rgba(160,145,210,0.65)]">{task.description}</p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {task.priority && (
             <span
               className={cn(
                 "rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.16em]",
-                PRIORITY_COLORS[task.priority] ?? "border-white/10 bg-white/10 text-slate-200",
+                PRIORITY_COLORS[task.priority] ?? "border-[rgba(120,80,255,0.2)] bg-[rgba(120,80,255,0.08)] text-[rgba(170,150,230,0.7)]",
               )}
             >
               {task.priority}
