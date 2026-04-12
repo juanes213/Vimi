@@ -86,14 +86,14 @@ export const SECTION_DETAILS: Record<
   },
 };
 
-const NAV_ITEMS = (
+export const NAV_ITEMS = (
   Object.entries(SECTION_DETAILS) as Array<[Section, (typeof SECTION_DETAILS)[Section]]>
 ).map(([id, detail]) => ({
   id,
   ...detail,
 }));
 
-interface SidebarProps {
+export interface SidebarProps {
   active: Section;
   onChange: (s: Section) => void;
 }
