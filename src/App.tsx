@@ -306,9 +306,9 @@ function VimiPage({
         <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.26em] text-[rgba(0,255,180,0.55)]">
           Vimi · Presence Mode
         </p>
-        <h1 className="mt-3 text-4xl leading-tight text-white sm:text-5xl">
+        <h1 className="mt-3 font-['Cormorant_Garamond'] text-4xl leading-tight text-white sm:text-5xl">
           Your life,{" "}
-          <em className="not-italic text-[rgba(200,180,255,0.85)]">your orbit.</em>
+          <em className="italic text-[rgba(200,180,255,0.85)]">your orbit.</em>
         </h1>
         <p className="mt-4 font-['DM_Sans'] text-sm font-light leading-7 text-[rgba(100,85,160,0.7)]">
           {voice.activeMode === "idle"     && "Tap the orb to talk with Vimi"}
@@ -352,7 +352,7 @@ function FeaturePage({ section }: { section: Exclude<Section, "chat"> }) {
             <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.24em] text-[rgba(0,255,180,0.55)]">
               {detail.eyebrow}
             </p>
-            <h2 className="mt-3 text-4xl text-white">{detail.label}</h2>
+            <h2 className="mt-3 font-['Cormorant_Garamond'] text-4xl text-white">{detail.label}</h2>
             <p className="mt-3 font-['DM_Sans'] text-sm font-light leading-7 text-[rgba(100,85,160,0.7)]">
               {detail.description}
             </p>
