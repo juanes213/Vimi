@@ -6,9 +6,9 @@
 
 ## Overview
 
-Full UI/UX redesign of the Vimi voice assistant app. The goal is to replace the current "generic glass morphism" aesthetic with a **Neo-Holographic HUD** style — futuristic, elegant, and grounded in the existing galaxy/space theme. The primary change is from a passive decorative dark UI to an **active command interface** that feels alive and purposeful.
+Full UI/UX redesign of the Vimi voice assistant app. The goal is to replace the current "generic glass morphism" aesthetic with a **futuristic-elegant** style — the feel of a luxury instrument rather than a command terminal. Grounded in the existing galaxy/space theme with a vertical sidebar layout.
 
-**Approved direction:** Neo-Holographic HUD with deep purple base + neon cyan accents + electric violet structural elements.
+**Approved direction:** Deep purple base + neon cyan accents + electric violet structural elements. Futuristic but classy — not robotic. The tone is a luxury editorial interface, not a sci-fi cockpit.
 
 ---
 
@@ -34,15 +34,26 @@ Full UI/UX redesign of the Vimi voice assistant app. The goal is to replace the 
 
 ### Typography
 
-| Role | Font | Usage |
-|---|---|---|
-| Display | **Syne** (700–800) | Page titles, section headings, orb title |
-| HUD labels | **Rajdhani** (600) | ALL_CAPS labels, nav text, system chips, status |
-| System data | **Space Mono** (400) | Timestamps, version strings, message metadata |
-| Body | **DM Sans** (300–500) | Chat messages, descriptions, input fields |
+**Approved pairing: Cormorant Garamond + Outfit + DM Sans**
 
-All four fonts loaded from Google Fonts. Body font replaces current Aptos/Trebuchet.  
-Heading serif (Iowan Old Style) removed — Syne takes over all display roles.
+| Role | Font | Weight | Usage |
+|---|---|---|---|
+| Display | **Cormorant Garamond** | 300–400 (italic for emphasis) | Page titles, orb title, section headings |
+| UI labels | **Outfit** | 300–500 | Nav labels, panel labels, chips, system bar text |
+| Body | **DM Sans** | 300–400 | Chat messages, descriptions, input fields |
+
+Google Fonts import:
+```css
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Outfit:wght@200;300;400;500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
+```
+
+**Tone rules:**
+- Headings use Cormorant at 300–400 weight — thin, high-contrast, graceful. Not bold.
+- Labels use Outfit at 300–400 with moderate tracking (`0.14–0.22em`) — not aggressive ALL-CAPS everywhere. Use sentence case for descriptions; uppercase only for the shortest status labels.
+- Timestamps/metadata: Outfit 300 in ink3 — no monospace, stays elegant.
+- Body text: DM Sans 300, generous line-height (1.65).
+
+Body font replaces current Aptos/Trebuchet. Heading serif (Iowan Old Style) removed — Cormorant Garamond takes over all display roles.
 
 ### Background
 
@@ -217,11 +228,11 @@ Update `h1,h2,h3,h4` to `'Syne', sans-serif` with `font-weight: 700`.
 
 | Name | Target | Spec |
 |---|---|---|
-| `orbRingRotate` | Sidebar + orb rings | 12s / 20s linear infinite, one reversed |
+| `orbRingRotate` | Orb rings | 12s / 20s linear infinite, one reversed — slow and graceful |
 | `orbFloat` | Central orb | 8s ease-in-out `translateY(-6px) scale(1.015)` |
 | `starDrift` | Starfield | Keep existing, slight opacity increase |
-| `hudScan` | Optional scanline effect on active panels | 4s ease-in-out opacity pulse |
-| `fadeRise` | Page load | Keep existing |
+| `fadeRise` | Page load | Keep existing — staggered with `delay-1`, `delay-2` |
+| `glowPulse` | Active sidebar indicator, status dots | 3s ease-in-out opacity/shadow pulse — subtle, not aggressive |
 
 ---
 
