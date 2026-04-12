@@ -100,53 +100,80 @@ interface SidebarProps {
 
 export function Sidebar({ active, onChange }: SidebarProps) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
-      <nav className="pointer-events-auto w-full max-w-4xl rounded-[28px] border border-white/70 bg-white/72 p-2 shadow-[0_24px_80px_rgba(82,64,46,0.18)] backdrop-blur-2xl">
-        <div className="grid grid-cols-3 gap-2 md:grid-cols-6">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = active === item.id;
+    <aside className="relative z-10 flex h-screen w-16 shrink-0 flex-col items-center border-r border-[rgba(120,80,255,0.18)] bg-gradient-to-b from-[rgba(14,6,36,0.97)] to-[rgba(10,4,28,0.97)] py-5">
+      {/* right-edge gradient line */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[rgba(120,80,255,0.35)] to-transparent" />
 
-            return (
-              <button
-                key={item.id}
-                onClick={() => onChange(item.id)}
-                className={cn(
-                  "group rounded-[22px] px-3 py-3 text-left transition-all duration-300",
-                  isActive
-                    ? "translate-y-[-6px] bg-stone-900 text-white shadow-[0_18px_40px_rgba(40,31,24,0.28)]"
-                    : "text-stone-600 hover:bg-white/85 hover:text-stone-900",
-                )}
+      {/* Logo orb */}
+      <div
+        className="mb-4 h-9 w-9 shrink-0 rounded-[11px] border border-[rgba(180,150,255,0.2)]"
+        style={{
+          background: "radial-gradient(circle at 34% 28%, rgba(220,200,255,0.95), rgba(140,90,255,0.88) 45%, rgba(42,14,110,0.97) 100%)",
+          boxShadow: "0 0 20px rgba(120,80,255,0.35), 0 4px 16px rgba(0,0,0,0.5)",
+        }}
+      />
+
+      {/* Nav items */}
+      <nav className="flex flex-1 flex-col items-center gap-1">
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon as ComponentType<SVGProps<SVGSVGElement>>;
+          const isActive = active === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChange(item.id)}
+              title={item.label}
+              className={cn(
+                "group relative flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl transition-all duration-200",
+                isActive
+                  ? "border border-[rgba(0,255,180,0.18)] bg-[rgba(0,255,180,0.07)]"
+                  : "hover:bg-[rgba(120,80,255,0.08)]",
+              )}
+            >
+              {/* active left indicator */}
+              {isActive && (
+                <span
+                  className="absolute -left-[9px] top-1/4 h-1/2 w-0.5 rounded-r-full"
+                  style={{
+                    background: "var(--cyan)",
+                    boxShadow: "0 0 8px var(--cyan), 0 0 16px rgba(0,255,180,0.3)",
+                    animation: "glowPulse 3s ease-in-out infinite",
+                  }}
+                />
+              )}
+              <Icon
+                className="h-4 w-4"
+                style={{ color: isActive ? "var(--cyan)" : "rgba(140,120,200,0.45)" }}
+              />
+              <span
+                className="text-[7px] font-['Outfit'] font-normal tracking-[0.1em] uppercase leading-none"
+                style={{ color: isActive ? "rgba(0,255,180,0.65)" : "rgba(100,85,160,0.5)" }}
               >
-                <span
-                  className={cn(
-                    "mb-2 flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-300",
-                    isActive ? "bg-white/18" : "bg-stone-100/80 group-hover:bg-white",
-                  )}
-                  style={!isActive ? { boxShadow: `inset 0 0 0 1px ${item.aura}` } : undefined}
-                >
-                  <Icon
-                    className={cn(
-                      "h-5 w-5 transition-transform duration-300",
-                      isActive ? "scale-105 text-white" : "text-stone-700 group-hover:scale-105",
-                    )}
-                  />
-                </span>
-                <span className="block text-sm font-semibold">{item.dockLabel}</span>
-                <span
-                  className={cn(
-                    "mt-0.5 hidden text-xs leading-relaxed md:block",
-                    isActive ? "text-white/72" : "text-stone-400",
-                  )}
-                >
-                  {item.eyebrow}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {item.dockLabel}
+              </span>
+            </button>
+          );
+        })}
       </nav>
-    </div>
+
+      {/* Bottom: status + avatar */}
+      <div className="flex flex-col items-center gap-2">
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ background: "var(--cyan)", boxShadow: "0 0 6px var(--cyan)" }}
+        />
+        <div
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(120,80,255,0.3)] text-[11px] font-['Outfit']"
+          style={{
+            background: "linear-gradient(135deg, rgba(120,80,255,0.5), rgba(60,30,140,0.8))",
+            color: "rgba(200,180,255,0.9)",
+            boxShadow: "0 0 12px rgba(120,80,255,0.2)",
+          }}
+        >
+          V
+        </div>
+      </div>
+    </aside>
   );
 }
 
