@@ -159,9 +159,9 @@ function Dashboard() {
   const lastHandledAssistantActionId = useRef<string | null>(null);
   const orbStyle: CSSProperties = {
     background:
-      "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(185,153,255,0.95) 26%, rgba(137,92,255,0.9) 52%, rgba(58,25,124,0.95) 100%)",
+      "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(255,255,255,0.16) 18%, transparent 36%), radial-gradient(circle at 50% 60%, rgba(32,227,194,0.28), rgba(102,116,255,0.18) 54%, rgba(255,255,255,0.04) 100%)",
     boxShadow:
-      "0 0 0 1px rgba(255,255,255,0.12), 0 32px 120px rgba(125,92,255,0.34), 0 0 120px rgba(226,104,255,0.14)",
+      "0 0 0 1px rgba(255,255,255,0.12), 0 32px 120px rgba(32,227,194,0.18), 0 0 80px rgba(102,116,255,0.10)",
   };
 
   const launchVimi = () => {
@@ -241,7 +241,7 @@ function Dashboard() {
   };
 
   return (
-    <div className="soft-galaxy hud-grid-bg relative flex h-screen overflow-hidden">
+    <div className="space-glass-bg relative flex h-screen overflow-hidden">
       <BackgroundEffects />
 
       <Sidebar active={activePage} onChange={setActivePage} />
@@ -433,11 +433,11 @@ function SideInfoPanel({
   setAutoStart: (enabled: boolean) => Promise<void>;
 }) {
   return (
-    <aside className="fade-rise delay-1 flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-l border-[rgba(120,80,255,0.14)] bg-gradient-to-b from-[rgba(14,6,36,0.9)] to-[rgba(8,4,22,0.85)] px-3.5 py-4">
+    <aside className="fade-rise delay-1 flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-l border-[rgba(255,255,255,0.07)] px-3.5 py-4" style={{ background: "rgba(7,13,16,0.82)", backdropFilter: "blur(20px) saturate(1.2)" }}>
       <div className="flex flex-col gap-3">
         <div className="panel-soft p-4">
           <p className="hud-label">Today</p>
-          <p className="mt-3 text-sm leading-7 text-[rgba(228,224,255,0.9)]">{today}</p>
+          <p className="mt-3 text-sm leading-7 text-[rgba(216,235,232,0.8)]">{today}</p>
         </div>
 
         <div className="panel-soft p-4">
@@ -449,7 +449,7 @@ function SideInfoPanel({
             />
             <div>
               <p className="text-sm font-semibold text-white">{activeDetail.label}</p>
-              <p className="mt-1 text-sm text-[rgba(170,150,230,0.7)]">{activeMode}</p>
+              <p className="mt-1 text-sm text-[rgba(180,204,201,0.5)]">{activeMode}</p>
             </div>
           </div>
         </div>
@@ -462,7 +462,7 @@ function SideInfoPanel({
             onClick={onToggleAutoListen}
             className={cn(
               "status-chip mt-4 cursor-pointer transition-colors",
-              autoListen && "!border-[rgba(0,255,180,0.4)] !bg-[rgba(0,255,180,0.08)] !text-[rgba(0,255,180,0.85)]",
+              autoListen && "!border-[rgba(32,227,194,0.4)] !bg-[rgba(32,227,194,0.08)] !text-[rgba(32,227,194,0.85)]",
             )}
           >
             {autoListen ? "auto-listen on" : "auto-listen off"}
@@ -482,7 +482,7 @@ function SideInfoPanel({
               ? googleIntegration.accountLabel ?? "Connected"
               : "Not connected"}
           </p>
-          <p className="mt-1 text-sm text-[rgba(170,150,230,0.7)]">
+          <p className="mt-1 text-sm text-[rgba(180,204,201,0.5)]">
             {googleIntegration?.status === "connected"
               ? "Gmail and Calendar are available for Vimi."
               : "Connect Google so Vimi can read Gmail and manage Calendar."}
@@ -503,15 +503,15 @@ function SideInfoPanel({
           </div>
 
           {pendingApprovals.length === 0 ? (
-            <p className="mt-4 text-sm leading-6 text-[rgba(170,150,230,0.7)]">
+            <p className="mt-4 text-sm leading-6 text-[rgba(180,204,201,0.5)]">
               When Vimi needs approval for something high-risk, it will appear here.
             </p>
           ) : (
             <div className="mt-4 space-y-3">
               {pendingApprovals.slice(0, 4).map((approval) => (
-                <div key={approval._id} className="rounded-3xl border border-[rgba(120,80,255,0.15)] bg-[rgba(120,80,255,0.05)] p-3">
+                <div key={approval._id} className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] p-3">
                   <p className="text-sm font-medium text-white">{approval.humanSummary}</p>
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[rgba(100,85,160,0.55)]">
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[rgba(180,204,201,0.38)]">
                     {approval.toolName}
                   </p>
                   <div className="mt-3 flex gap-2">
@@ -545,10 +545,10 @@ function BackgroundEffects() {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="starfield starfield-near absolute inset-0" />
       <div className="starfield starfield-far absolute inset-0" />
-      <div className="absolute left-[-10rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[#6f35ff]/20 blur-[130px]" />
-      <div className="absolute right-[-8rem] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[#ef6cff]/14 blur-[120px]" />
-      <div className="absolute bottom-[-12rem] left-[14%] h-[30rem] w-[30rem] rounded-full bg-[#2fc4ff]/12 blur-[150px]" />
-      <div className="absolute bottom-[10%] right-[10%] h-[20rem] w-[20rem] rounded-full bg-[#7a5cff]/16 blur-[110px]" />
+      <div className="absolute left-[-10rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[rgba(32,227,194,0.07)] blur-[130px]" />
+      <div className="absolute right-[-8rem] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(102,116,255,0.07)] blur-[120px]" />
+      <div className="absolute bottom-[-12rem] left-[14%] h-[30rem] w-[30rem] rounded-full bg-[rgba(32,227,194,0.05)] blur-[150px]" />
+      <div className="absolute bottom-[10%] right-[10%] h-[20rem] w-[20rem] rounded-full bg-[rgba(102,116,255,0.06)] blur-[110px]" />
     </div>
   );
 }
@@ -565,37 +565,15 @@ function CentralOrb({
   onClick: () => void;
 }) {
   return (
-    /* Corner-bracket frame */
     <div className="relative inline-flex items-center justify-center p-8">
-      {/* corner brackets */}
-      {(["tl","tr","bl","br"] as const).map((corner) => (
-        <span
-          key={corner}
-          className="absolute"
-          style={{
-            top:    corner.startsWith("t") ? 0 : "auto",
-            bottom: corner.startsWith("b") ? 0 : "auto",
-            left:   corner.endsWith("l")   ? 0 : "auto",
-            right:  corner.endsWith("r")   ? 0 : "auto",
-            width: 16, height: 16,
-            borderColor: "rgba(0,255,180,0.35)",
-            borderStyle: "solid",
-            borderWidth: corner === "tl" ? "1.5px 0 0 1.5px"
-                       : corner === "tr" ? "1.5px 1.5px 0 0"
-                       : corner === "bl" ? "0 0 1.5px 1.5px"
-                       :                   "0 1.5px 1.5px 0",
-          }}
-        />
-      ))}
-
       {/* outer ring */}
       <span
-        className="pointer-events-none absolute inset-0 rounded-full border border-[rgba(0,255,180,0.07)]"
+        className="pointer-events-none absolute inset-0 rounded-full border border-[rgba(255,255,255,0.06)]"
         style={{ animation: "orbThink 12s linear infinite" }}
       />
       {/* mid dashed ring */}
       <span
-        className="pointer-events-none absolute inset-4 rounded-full border border-dashed border-[rgba(120,80,255,0.18)]"
+        className="pointer-events-none absolute inset-4 rounded-full border border-dashed border-[rgba(32,227,194,0.1)]"
         style={{ animation: "orbThink 20s linear infinite reverse" }}
       />
 
@@ -638,9 +616,9 @@ function CentralOrb({
           <div
             className={cn(
               "absolute inset-0 rounded-full",
-              mode === "listening" && "animate-ping opacity-15 ring-4 ring-fuchsia-300/60",
-              mode === "speaking"  && "animate-ping opacity-[0.12] ring-4 ring-[rgba(0,255,180,0.5)]",
-              mode === "thinking"  && "animate-pulse opacity-15 ring-4 ring-violet-300/50",
+              mode === "listening" && "animate-ping opacity-10 ring-4 ring-[rgba(32,227,194,0.5)]",
+              mode === "speaking"  && "animate-ping opacity-[0.12] ring-4 ring-[rgba(32,227,194,0.5)]",
+              mode === "thinking"  && "animate-pulse opacity-10 ring-4 ring-[rgba(102,116,255,0.4)]",
             )}
             style={{ animationDuration: mode === "thinking" ? "1.4s" : "1.2s" }}
           />
@@ -657,7 +635,7 @@ function MiniOrbLauncher({ mode, onClick }: { mode: VoiceMode; onClick: () => vo
       onClick={onClick}
       className={cn(
         "fixed bottom-10 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full border text-white transition-all duration-300 hover:scale-105",
-        mode === "idle" ? "galaxy-orb-idle border-[rgba(180,150,255,0.15)]" : "voice-orb is-thinking",
+        mode === "idle" ? "galaxy-orb-idle border-[rgba(255,255,255,0.1)]" : "voice-orb is-thinking",
       )}
       aria-label="Open Vimi"
       title="Open Vimi"
@@ -741,19 +719,19 @@ function SystemBar({
 }) {
   const detail = SECTION_DETAILS[activePage];
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(120,80,255,0.12)] bg-[rgba(5,2,15,0.72)] px-5">
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[rgba(5,7,8,0.72)] px-5" style={{ backdropFilter: "blur(16px)" }}>
       <div className="flex items-center gap-2">
-        <span className="font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(100,85,160,0.55)]">
+        <span className="font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(180,204,201,0.38)]">
           Vimi
         </span>
-        <span className="text-[10px] text-[rgba(0,255,180,0.25)]">›</span>
-        <span className="font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(0,255,180,0.65)]">
+        <span className="text-[10px] text-[rgba(32,227,194,0.25)]">›</span>
+        <span className="font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.65)]">
           {detail.eyebrow}
         </span>
       </div>
       <div className="flex items-center gap-3">
         <span className="status-chip">{activeMode}</span>
-        <span className="font-['Outfit'] text-[10px] text-[rgba(100,85,160,0.5)]">{today}</span>
+        <span className="font-['Outfit'] text-[10px] text-[rgba(180,204,201,0.38)]">{today}</span>
       </div>
     </div>
   );
@@ -761,18 +739,18 @@ function SystemBar({
 
 function StatusStrip() {
   return (
-    <div className="flex h-7 shrink-0 items-center gap-5 border-t border-[rgba(0,255,180,0.06)] bg-[rgba(3,1,10,0.88)] px-5">
+    <div className="flex h-7 shrink-0 items-center gap-5 border-t border-[rgba(255,255,255,0.05)] bg-[rgba(5,7,8,0.88)] px-5">
       {[
-        { color: "var(--cyan)",   label: "Vimi online" },
+        { color: "var(--teal)",   label: "Vimi online" },
         { color: "var(--violet)", label: "Convex connected" },
-        { color: "var(--cyan)",   label: "TTS ready" },
+        { color: "var(--teal)",   label: "TTS ready" },
       ].map(({ color, label }) => (
         <div key={label} className="flex items-center gap-1.5">
           <span
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: color, boxShadow: `0 0 4px ${color}` }}
           />
-          <span className="font-['Outfit'] text-[9px] uppercase tracking-[0.1em] text-[rgba(100,85,160,0.48)]">
+          <span className="font-['Outfit'] text-[9px] uppercase tracking-[0.1em] text-[rgba(180,204,201,0.32)]">
             {label}
           </span>
         </div>
@@ -806,7 +784,7 @@ function AutoStartToggle({
       onClick={toggle}
       className={cn(
         "status-chip mt-2 cursor-pointer transition-colors",
-        enabled && "!border-[rgba(140,95,255,0.4)] !bg-[rgba(140,95,255,0.1)] !text-[rgba(200,180,255,0.9)]",
+        enabled && "!border-[rgba(102,116,255,0.4)] !bg-[rgba(102,116,255,0.1)] !text-[rgba(180,190,255,0.9)]",
       )}
     >
       {enabled ? "start with Windows on" : "start with Windows off"}
