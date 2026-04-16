@@ -35,8 +35,8 @@ export function EventsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Calendar moments</h2>
-          <p className="text-sm leading-6 text-stone-500">
+          <h2 className="text-2xl font-semibold text-white">Calendar moments</h2>
+          <p className="text-sm leading-6 text-[rgba(180,204,201,0.5)]">
             {upcoming.length} upcoming / {past.length} past
           </p>
         </div>
@@ -83,8 +83,8 @@ export function EventsSection() {
       <div className="flex flex-col gap-3">
         {events.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">No events saved yet.</p>
-            <p className="mt-2 text-sm leading-6 text-stone-500">
+            <p className="text-lg font-semibold text-white">No events saved yet.</p>
+            <p className="mt-2 text-sm leading-6 text-[rgba(180,204,201,0.5)]">
               When you add moments here, your schedule will feel less technical and more yours.
             </p>
           </div>
@@ -92,7 +92,7 @@ export function EventsSection() {
 
         {upcoming.length > 0 && (
           <>
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Upcoming</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-[rgba(180,204,201,0.45)]">Upcoming</p>
             {upcoming.map((event) => (
               <EventCard key={event._id} event={event} onDelete={() => removeEvent({ id: event._id })} />
             ))}
@@ -101,7 +101,7 @@ export function EventsSection() {
 
         {past.length > 0 && (
           <>
-            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-stone-400">Recent</p>
+            <p className="mt-2 text-xs uppercase tracking-[0.24em] text-[rgba(180,204,201,0.45)]">Recent</p>
             {past.map((event) => (
               <EventCard
                 key={event._id}
@@ -131,20 +131,20 @@ function EventCard({
 
   return (
     <div className={`panel-soft flex items-center gap-3 p-4 ${isPast ? "opacity-60" : ""}`}>
-      <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-[20px] border border-white/70 bg-white/70 text-stone-700">
+      <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-[20px] border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.06)] text-white">
         <span className="text-lg font-semibold leading-none">{day}</span>
-        <span className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{month}</span>
+        <span className="text-[11px] uppercase tracking-[0.18em] text-[rgba(180,204,201,0.5)]">{month}</span>
       </div>
 
       <div className="flex-1">
-        <p className="text-sm font-semibold text-stone-900">{event.title}</p>
+        <p className="text-sm font-semibold text-white">{event.title}</p>
         <div className="mt-2 flex flex-wrap gap-2">
           <span className="status-chip">date / {formatDate(event.date)}</span>
           {event.time && <span className="status-chip">time / {event.time}</span>}
         </div>
       </div>
 
-      <button onClick={onDelete} className="text-sm text-stone-300 transition-colors hover:text-red-400">
+      <button onClick={onDelete} className="text-sm text-[rgba(180,204,201,0.35)] transition-colors hover:text-[rgba(255,80,100,0.7)]">
         x
       </button>
     </div>
