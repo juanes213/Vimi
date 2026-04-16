@@ -311,7 +311,7 @@ function VimiPage({
         <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">
           Vimi · Presence Mode
         </p>
-        <h1 className="mt-3 font-['Geist'] text-[2.25rem] font-light leading-tight text-white sm:text-5xl">
+        <h1 className="mt-3 font-['Geist'] text-4xl font-light leading-tight text-white sm:text-5xl">
           Your life,{" "}
           <em className="italic text-[rgba(32,227,194,0.7)]">your orbit.</em>
         </h1>
