@@ -36,7 +36,7 @@ export function RemindersSection() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-3xl text-white">Pending reminders</h2>
-          <p className="font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.65)]">
+          <p className="text-sm font-light leading-6 text-[rgba(180,204,201,0.5)]">
             {pending.length} to attend / {completed.length} resolved
           </p>
         </div>
@@ -83,8 +83,8 @@ export function RemindersSection() {
       <div className="flex flex-col gap-3">
         {reminders.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="font-['Cormorant_Garamond'] text-xl font-light text-[rgba(160,145,210,0.7)]">No reminders saved yet.</p>
-            <p className="mt-2 font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.55)]">
+            <p className="font-['Geist'] text-xl font-light text-[rgba(180,204,201,0.5)]">No reminders saved yet.</p>
+            <p className="mt-2 text-sm font-light leading-6 text-[rgba(180,204,201,0.45)]">
               This space works best when it nudges you calmly instead of sounding like an alarm.
             </p>
           </div>
@@ -108,8 +108,8 @@ export function RemindersSection() {
               className={cn(
                 "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
                 reminder.status === "completed"
-                  ? "border-[rgba(0,255,180,0.4)] bg-[rgba(0,255,180,0.12)] text-[rgba(0,255,180,0.9)]"
-                  : "border-[rgba(120,80,255,0.3)] bg-[rgba(120,80,255,0.06)] text-transparent hover:border-[rgba(120,80,255,0.5)]",
+                  ? "border-[rgba(32,227,194,0.4)] bg-[rgba(32,227,194,0.12)] text-[rgba(32,227,194,0.9)]"
+                  : "border-[rgba(255,255,255,0.2)] bg-[rgba(255,255,255,0.04)] text-transparent hover:border-[rgba(32,227,194,0.4)]",
               )}
             >
               <span className="text-[10px] font-semibold uppercase">
@@ -121,12 +121,12 @@ export function RemindersSection() {
               <p
                 className={cn(
                   "text-sm text-white",
-                  reminder.status === "completed" && "text-[rgba(100,85,160,0.5)] line-through decoration-[rgba(120,80,255,0.3)]",
+                  reminder.status === "completed" && "text-[rgba(180,204,201,0.4)] line-through decoration-[rgba(255,255,255,0.2)]",
                 )}
               >
               {reminder.text}
             </p>
-              <p className="mt-2 flex flex-wrap gap-2 text-xs text-[rgba(100,85,160,0.55)]">
+              <p className="mt-2 flex flex-wrap gap-2 text-xs text-[rgba(180,204,201,0.45)]">
                 <span className="status-chip">date / {formatDate(reminder.date)}</span>
                 {reminder.time && <span className="status-chip">time / {reminder.time}</span>}
               </p>
@@ -134,7 +134,7 @@ export function RemindersSection() {
 
             <button
               onClick={() => removeReminder({ id: reminder._id })}
-              className="font-['Outfit'] text-xs tracking-widest text-[rgba(100,85,160,0.4)] transition-colors hover:text-[rgba(255,80,100,0.7)]"
+              className="font-['Geist'] text-xs tracking-widest text-[rgba(180,204,201,0.35)] transition-colors hover:text-[rgba(255,80,100,0.7)]"
             >
               x
             </button>

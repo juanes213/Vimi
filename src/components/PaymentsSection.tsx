@@ -52,8 +52,8 @@ export function PaymentsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Recurring commitments</h2>
-          <p className="text-sm leading-6 text-stone-500">
+          <h2 className="text-2xl font-semibold text-white">Recurring commitments</h2>
+          <p className="text-sm leading-6 text-[rgba(180,204,201,0.5)]">
             Estimated flow / ${totalMonthly.toFixed(2)} per month
           </p>
         </div>
@@ -128,8 +128,8 @@ export function PaymentsSection() {
       <div className="flex flex-col gap-3">
         {payments.length === 0 && (
           <div className="panel-soft px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-stone-800">No recurring payments yet.</p>
-            <p className="mt-2 text-sm leading-6 text-stone-500">
+            <p className="text-lg font-semibold text-white">No recurring payments yet.</p>
+            <p className="mt-2 text-sm leading-6 text-[rgba(180,204,201,0.5)]">
               Here you should feel financial clarity without entering a banking atmosphere.
             </p>
           </div>
@@ -140,13 +140,13 @@ export function PaymentsSection() {
             <div
               className={cn(
                 "h-12 w-2 shrink-0 rounded-full",
-                payment.status === "active" ? "bg-emerald-400" : "bg-stone-300",
+                payment.status === "active" ? "bg-[rgba(32,227,194,0.7)]" : "bg-[rgba(255,255,255,0.2)]",
               )}
             />
 
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold text-stone-900">{payment.name}</p>
+                <p className="text-sm font-semibold text-white">{payment.name}</p>
                 {payment.category && <span className="status-chip">{payment.category}</span>}
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -160,12 +160,12 @@ export function PaymentsSection() {
               onClick={() => toggleStatus({ id: payment._id })}
               className={cn(
                 "secondary-button px-4 py-2 text-xs uppercase tracking-[0.18em]",
-                payment.status === "active" ? "text-amber-700" : "text-emerald-700",
+                payment.status === "active" ? "text-[rgba(255,193,76,0.85)]" : "text-[rgba(32,227,194,0.85)]",
               )}
             >
               {payment.status === "active" ? "Pause" : "Resume"}
             </button>
-            <button onClick={() => removePayment({ id: payment._id })} className="text-sm text-stone-300 transition-colors hover:text-red-400">
+            <button onClick={() => removePayment({ id: payment._id })} className="text-sm text-[rgba(180,204,201,0.35)] transition-colors hover:text-[rgba(255,80,100,0.7)]">
               x
             </button>
           </div>

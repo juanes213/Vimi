@@ -36,8 +36,8 @@ export function BudgetsSection() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-stone-900">Financial pulse</h2>
-          <p className="text-sm leading-6 text-stone-500">
+          <h2 className="text-2xl font-semibold text-white">Financial pulse</h2>
+          <p className="text-sm leading-6 text-[rgba(180,204,201,0.5)]">
             {monthLabel} / total ${total.toFixed(2)}
           </p>
         </div>
@@ -83,8 +83,8 @@ export function BudgetsSection() {
 
       {budgets.length === 0 ? (
         <div className="panel-soft px-6 py-10 text-center">
-          <p className="text-lg font-semibold text-stone-800">No budget set for this month.</p>
-          <p className="mt-2 text-sm leading-6 text-stone-500">
+          <p className="text-lg font-semibold text-white">No budget set for this month.</p>
+          <p className="mt-2 text-sm leading-6 text-[rgba(180,204,201,0.5)]">
             This section should feel like clarity and margin, not a spreadsheet.
           </p>
         </div>
@@ -97,24 +97,24 @@ export function BudgetsSection() {
               <div key={budget._id} className="panel-soft p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-stone-900">{budget.category}</p>
-                    <p className="mt-1 text-sm text-stone-500">${budget.amount.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-white">{budget.category}</p>
+                    <p className="mt-1 text-sm text-[rgba(180,204,201,0.5)]">${budget.amount.toFixed(2)}</p>
                   </div>
                   <button
                     onClick={() => removeBudget({ id: budget._id })}
-                    className="text-sm text-stone-300 transition-colors hover:text-red-400"
+                    className="text-sm text-[rgba(180,204,201,0.35)] transition-colors hover:text-[rgba(255,80,100,0.7)]"
                   >
                     x
                   </button>
                 </div>
 
-                <div className="mt-4 h-2.5 rounded-full bg-stone-200/70">
+                <div className="mt-4 h-2.5 rounded-full bg-[rgba(255,255,255,0.08)]">
                   <div
                     className="h-2.5 rounded-full bg-gradient-to-r from-[#d6a17d] via-[#bc7a5d] to-[#8a7361] transition-all"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-stone-400">
+                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[rgba(180,204,201,0.45)]">
                   {pct.toFixed(0)}% of total
                 </p>
               </div>

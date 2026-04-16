@@ -100,16 +100,14 @@ export interface SidebarProps {
 
 export function Sidebar({ active, onChange }: SidebarProps) {
   return (
-    <aside className="relative z-10 flex h-screen w-16 shrink-0 flex-col items-center border-r border-[rgba(120,80,255,0.18)] bg-gradient-to-b from-[rgba(14,6,36,0.97)] to-[rgba(10,4,28,0.97)] py-5">
-      {/* right-edge gradient line */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[rgba(120,80,255,0.35)] to-transparent" />
+    <aside className="relative z-10 flex h-screen w-16 shrink-0 flex-col items-center border-r border-[rgba(255,255,255,0.07)] py-5" style={{ background: "rgba(7, 13, 16, 0.82)", backdropFilter: "blur(24px) saturate(1.2)" }}>
 
       {/* Logo orb */}
       <div
-        className="mb-4 h-9 w-9 shrink-0 rounded-[11px] border border-[rgba(180,150,255,0.2)]"
+        className="mb-4 h-9 w-9 shrink-0 rounded-[11px] border border-[rgba(255,255,255,0.12)]"
         style={{
-          background: "radial-gradient(circle at 34% 28%, rgba(220,200,255,0.95), rgba(140,90,255,0.88) 45%, rgba(42,14,110,0.97) 100%)",
-          boxShadow: "0 0 20px rgba(120,80,255,0.35), 0 4px 16px rgba(0,0,0,0.5)",
+          background: "radial-gradient(circle at 34% 28%, rgba(255,255,255,0.92), rgba(255,255,255,0.18) 20%, rgba(32,227,194,0.22) 55%, rgba(7,16,14,0.96) 100%)",
+          boxShadow: "0 0 18px rgba(32,227,194,0.15), 0 4px 14px rgba(0,0,0,0.5)",
         }}
       />
 
@@ -125,8 +123,8 @@ export function Sidebar({ active, onChange }: SidebarProps) {
               className={cn(
                 "group relative flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl transition-all duration-200",
                 isActive
-                  ? "border border-[rgba(0,255,180,0.18)] bg-[rgba(0,255,180,0.07)]"
-                  : "hover:bg-[rgba(120,80,255,0.08)]",
+                  ? "border border-[rgba(32,227,194,0.16)] bg-[rgba(32,227,194,0.07)]"
+                  : "hover:bg-[rgba(255,255,255,0.05)]",
               )}
             >
               {/* active left indicator */}
@@ -134,19 +132,19 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <span
                   className="absolute -left-[9px] top-1/4 h-1/2 w-0.5 rounded-r-full"
                   style={{
-                    background: "var(--cyan)",
-                    boxShadow: "0 0 8px var(--cyan), 0 0 16px var(--cyan-dim)",
+                    background: "var(--teal)",
+                    boxShadow: "0 0 8px var(--teal), 0 0 16px rgba(32,227,194,0.3)",
                     animation: "glowPulse 3s ease-in-out infinite",
                   }}
                 />
               )}
               <item.icon
                 className="h-4 w-4"
-                style={{ color: isActive ? "var(--cyan)" : "rgba(140,120,200,0.45)" }}
+                style={{ color: isActive ? "var(--teal)" : "rgba(180,204,201,0.38)" }}
               />
               <span
-                className="text-[7px] font-['Outfit'] font-normal tracking-[0.1em] uppercase leading-none"
-                style={{ color: isActive ? "rgba(0,255,180,0.65)" : "rgba(100,85,160,0.5)" }}
+                className="text-[7px] font-['Geist'] font-normal tracking-[0.06em] uppercase leading-none"
+                style={{ color: isActive ? "rgba(32,227,194,0.7)" : "rgba(180,204,201,0.32)" }}
               >
                 {item.dockLabel}
               </span>
@@ -159,14 +157,14 @@ export function Sidebar({ active, onChange }: SidebarProps) {
       <div className="flex flex-col items-center gap-2">
         <span
           className="h-1.5 w-1.5 rounded-full"
-          style={{ background: "var(--cyan)", boxShadow: "0 0 6px var(--cyan)" }}
+          style={{ background: "var(--teal)", boxShadow: "0 0 6px var(--teal)" }}
         />
         <div
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(120,80,255,0.3)] text-[11px] font-['Outfit']"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] text-[11px] font-['Geist']"
           style={{
-            background: "linear-gradient(135deg, rgba(120,80,255,0.5), rgba(60,30,140,0.8))",
-            color: "rgba(200,180,255,0.9)",
-            boxShadow: "0 0 12px rgba(120,80,255,0.2)",
+            background: "rgba(32,227,194,0.12)",
+            color: "rgba(32,227,194,0.8)",
+            boxShadow: "0 0 10px rgba(32,227,194,0.08)",
           }}
         >
           V

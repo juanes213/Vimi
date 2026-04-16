@@ -37,10 +37,10 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
         <div className="flex min-h-full flex-col gap-3 py-3">
           {!hasConversation && (
             <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-              <p className="font-['Cormorant_Garamond'] text-lg font-light text-[rgba(160,145,210,0.6)]">
+              <p className="font-['Geist'] text-lg font-light text-[rgba(180,204,201,0.45)]">
                 Your conversation will appear here.
               </p>
-              <p className="mt-1 font-['Outfit'] text-[10px] uppercase tracking-[0.2em] text-[rgba(100,85,160,0.45)]">
+              <p className="mt-1 font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(180,204,201,0.32)]">
                 Tap the orb to begin
               </p>
             </div>
@@ -56,23 +56,23 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
                   className={cn(
                     "rounded-2xl px-4 py-2.5 text-sm font-light leading-relaxed",
                     msg.role === "user"
-                      ? "rounded-br-sm bg-[rgba(0,255,180,0.07)] text-[rgba(220,255,245,0.9)] ring-1 ring-[rgba(0,255,180,0.15)]"
-                      : "rounded-bl-sm bg-[rgba(120,80,255,0.07)] text-[rgba(170,150,230,0.85)] ring-1 ring-[rgba(120,80,255,0.16)]",
+                      ? "rounded-br-sm bg-[rgba(32,227,194,0.08)] text-[rgba(216,235,232,0.9)] ring-1 ring-[rgba(32,227,194,0.18)]"
+                      : "rounded-bl-sm bg-[rgba(255,255,255,0.05)] text-[rgba(216,235,232,0.82)] ring-1 ring-[rgba(255,255,255,0.08)]",
                   )}
                 >
                   <p>{msg.text.replace(/\{[\s\S]*"action"[\s\S]*\}/, "").trim() || msg.text}</p>
                 </div>
                 <p
                   className={cn(
-                    "font-['Outfit'] text-[9px] uppercase tracking-[0.14em]",
+                    "font-['Geist'] text-[9px] uppercase tracking-[0.14em]",
                     msg.role === "user"
-                      ? "text-right text-[rgba(0,255,180,0.35)]"
-                      : "text-[rgba(120,80,255,0.45)]",
+                      ? "text-right text-[rgba(32,227,194,0.35)]"
+                      : "text-[rgba(180,204,201,0.35)]",
                   )}
                 >
                   {msg.role === "user" ? "You" : "Vimi"}
                   {msg.parsedType && (
-                    <span className="ml-2 text-[rgba(100,85,160,0.5)]">
+                    <span className="ml-2 text-[rgba(180,204,201,0.38)]">
                       · {msg.parsedType.replace("create_", "created — ")}
                     </span>
                   )}
@@ -83,10 +83,10 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
 
           {showLiveAssistant && (
             <div className="flex justify-start">
-              <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-[rgba(120,80,255,0.07)] px-4 py-2.5 text-sm font-light leading-relaxed text-[rgba(170,150,230,0.85)] ring-1 ring-[rgba(120,80,255,0.16)]">
+              <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-[rgba(255,255,255,0.05)] px-4 py-2.5 text-sm font-light leading-relaxed text-[rgba(216,235,232,0.82)] ring-1 ring-[rgba(255,255,255,0.08)]">
                 <p>
                   {liveText}
-                  <span className="ml-1 inline-block h-3.5 w-px animate-pulse bg-[rgba(0,255,180,0.7)] align-middle" />
+                  <span className="ml-1 inline-block h-3.5 w-px animate-pulse bg-[rgba(32,227,194,0.7)] align-middle" />
                 </p>
               </div>
             </div>
