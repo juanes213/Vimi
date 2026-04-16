@@ -89,7 +89,7 @@ export default function App() {
 
 function AuthPage() {
   return (
-    <div className="soft-galaxy relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-glass-bg relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
       <BackgroundEffects />
 
       <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -97,17 +97,17 @@ function AuthPage() {
           <span className="status-chip">Vimi / life assistant</span>
           <h1 className="mt-6 max-w-3xl text-4xl font-light leading-tight text-white sm:text-5xl">
             Your life, decided by you.{" "}
-            <em className="italic text-[rgba(200,180,255,0.8)]">Executed by Vimi.</em>
+            <em className="italic text-[rgba(32,227,194,0.7)]">Executed by Vimi.</em>
           </h1>
-          <p className="mt-5 max-w-2xl font-['DM_Sans'] text-base font-light leading-7 text-[rgba(100,85,160,0.7)] sm:text-lg">
+          <p className="mt-5 max-w-2xl text-base font-light leading-7 text-[rgba(180,204,201,0.5)] sm:text-lg">
             Vimi should feel like an intelligent companion with agency: warm, clear, and ready to
             turn intent into motion.
           </p>
           <div className="mt-8 grid gap-3 md:grid-cols-3">
             {COMPANION_PILLARS.map((pillar) => (
               <article key={pillar.title} className="panel-soft p-4">
-                <p className="font-['Outfit'] text-sm font-medium tracking-wide text-white">{pillar.title}</p>
-                <p className="mt-2 font-['DM_Sans'] text-sm font-light leading-6 text-[rgba(100,85,160,0.7)]">{pillar.body}</p>
+                <p className="font-['Geist'] text-sm font-medium tracking-wide text-white">{pillar.title}</p>
+                <p className="mt-2 text-sm font-light leading-6 text-[rgba(180,204,201,0.5)]">{pillar.body}</p>
               </article>
             ))}
           </div>
@@ -120,9 +120,9 @@ function AuthPage() {
               <div className="absolute inset-[22%] rounded-full border border-white/20 bg-white/8" />
             </div>
             <div>
-              <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.26em] text-[rgba(0,255,180,0.55)]">Welcome to Vimi</p>
+              <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">Welcome to Vimi</p>
               <h2 className="mt-1 text-3xl font-light text-white">Step into your orbit</h2>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-[rgba(180,160,230,0.65)]">
+              <p className="mt-2 max-w-sm text-sm leading-6 text-[rgba(180,204,201,0.5)]">
                 A calmer, more immersive entry point built around Vimi instead of around a dashboard.
               </p>
             </div>
@@ -308,14 +308,14 @@ function VimiPage({
 
       {/* Title */}
       <div className="fade-rise delay-2 max-w-lg">
-        <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.26em] text-[rgba(0,255,180,0.55)]">
+        <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">
           Vimi · Presence Mode
         </p>
-        <h1 className="mt-3 font-['Cormorant_Garamond'] text-4xl leading-tight text-white sm:text-5xl">
+        <h1 className="mt-3 font-['Geist'] text-[2.25rem] font-light leading-tight text-white sm:text-5xl">
           Your life,{" "}
-          <em className="italic text-[rgba(200,180,255,0.85)]">your orbit.</em>
+          <em className="italic text-[rgba(32,227,194,0.7)]">your orbit.</em>
         </h1>
-        <p className="mt-4 font-['DM_Sans'] text-sm font-light leading-7 text-[rgba(100,85,160,0.7)]">
+        <p className="mt-4 text-sm font-light leading-7 text-[rgba(180,204,201,0.5)]">
           {voice.activeMode === "idle"     && "Tap the orb to talk with Vimi"}
           {voice.activeMode === "listening" && "Listening — speak naturally"}
           {voice.activeMode === "thinking"  && "Vimi is thinking…"}
@@ -333,7 +333,7 @@ function VimiPage({
       <div className="fade-rise delay-2 w-full">
         <div className="panel-soft overflow-hidden" style={{ height: "clamp(200px, 30vh, 360px)" }}>
           {/* panel header */}
-          <div className="flex items-center justify-between border-b border-[rgba(120,80,255,0.1)] px-4 py-2.5">
+          <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.07)] px-4 py-2.5">
             <span className="hud-label">Conversation</span>
           </div>
           <ChatTranscript liveAssistant={voice.liveAssistant} activeMode={voice.activeMode} />
@@ -354,11 +354,11 @@ function FeaturePage({ section }: { section: Exclude<Section, "chat"> }) {
       <div className="panel-surface fade-rise px-7 py-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl">
-            <p className="font-['Outfit'] text-[10px] uppercase tracking-[0.24em] text-[rgba(0,255,180,0.55)]">
+            <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">
               {detail.eyebrow}
             </p>
-            <h2 className="mt-3 font-['Cormorant_Garamond'] text-4xl text-white">{detail.label}</h2>
-            <p className="mt-3 font-['DM_Sans'] text-sm font-light leading-7 text-[rgba(100,85,160,0.7)]">
+            <h2 className="mt-3 font-['Geist'] text-4xl font-light text-white">{detail.label}</h2>
+            <p className="mt-3 text-sm font-light leading-7 text-[rgba(180,204,201,0.5)]">
               {detail.description}
             </p>
           </div>
@@ -374,8 +374,8 @@ function FeaturePage({ section }: { section: Exclude<Section, "chat"> }) {
               <Icon className="h-5 w-5 text-white" />
             </span>
             <div>
-              <p className="font-['Outfit'] text-sm font-medium text-white">{detail.label}</p>
-              <p className="mt-0.5 font-['DM_Sans'] text-xs font-light text-[rgba(100,85,160,0.65)]">
+              <p className="font-['Geist'] text-sm font-medium text-white">{detail.label}</p>
+              <p className="mt-0.5 text-xs font-light text-[rgba(180,204,201,0.48)]">
                 Dedicated view
               </p>
             </div>
