@@ -162,7 +162,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
         <div
           className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] text-[11px] font-['Geist']"
           style={{
-            background: "rgba(32, 227, 194, 0.12)",
+            background: "rgba(32,227,194,0.12)",
             color: "rgba(32,227,194,0.8)",
             boxShadow: "0 0 10px rgba(32,227,194,0.08)",
           }}
