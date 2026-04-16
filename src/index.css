@@ -451,12 +451,3 @@ button, input, textarea, select {
   40%            { transform: translateY(-4px); opacity: 1; }
 }
 
-@keyframes twinkleDrift {
-  0%, 100% { opacity: 0.18; }
-  50%       { opacity: 0.24; }
-}
-
-@keyframes twinkleDriftSlow {
-  0%, 100% { opacity: 0.08; }
-  50%       { opacity: 0.14; }
-}
