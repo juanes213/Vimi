@@ -37,7 +37,7 @@ export function ChatTranscript({ liveAssistant, activeMode }: ChatTranscriptProp
         <div className="flex min-h-full flex-col gap-3 py-3">
           {!hasConversation && (
             <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-              <p className="text-lg font-light text-[rgba(180,204,201,0.45)]">
+              <p className="font-['Geist'] text-lg font-light text-[rgba(180,204,201,0.45)]">
                 Your conversation will appear here.
               </p>
               <p className="mt-1 font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(180,204,201,0.32)]">
