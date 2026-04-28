@@ -52,6 +52,18 @@
   --panel-shadow:  rgba(0, 0, 0, 0.36);
   --border-v:      rgba(255, 255, 255, 0.08);
   --border:        rgba(32, 227, 194, 0.18);
+
+  /* tone-driven theme variables; Dashboard overrides these from app state */
+  --theme-accent: 141, 239, 255;
+  --theme-accent-strong: #8defff;
+  --theme-accent-soft: rgba(141, 239, 255, 0.16);
+  --theme-secondary: 102, 116, 255;
+  --theme-secondary-soft: rgba(102, 116, 255, 0.12);
+  --theme-bg-aura: rgba(70, 92, 255, 0.13);
+  --theme-bg-aura-2: rgba(32, 227, 194, 0.08);
+  --theme-glass-border: rgba(141, 239, 255, 0.12);
+  --theme-glass-highlight: rgba(141, 239, 255, 0.18);
+  --theme-shadow: rgba(32, 145, 227, 0.18);
 }
 
 /* ─── BASE ────────────────────────────────────────────────────────────── */
@@ -90,9 +102,11 @@ button, input, textarea, select {
 .space-glass-bg,
 .soft-galaxy {
   background:
-    radial-gradient(circle at 50% -20%, rgba(32, 227, 194, 0.10), transparent 32%),
-    radial-gradient(circle at 85% 12%,  rgba(102, 116, 255, 0.10), transparent 28%),
+    radial-gradient(circle at 50% -20%, var(--theme-bg-aura), transparent 34%),
+    radial-gradient(circle at 84% 12%,  var(--theme-bg-aura-2), transparent 30%),
+    radial-gradient(circle at 22% 78%, rgba(var(--theme-secondary), 0.06), transparent 30%),
     linear-gradient(180deg, #071013 0%, #050708 50%, #030405 100%);
+  transition: background 700ms ease, filter 700ms ease;
 }
 
 /* HUD grid removed — replaced by glass depth */
@@ -151,7 +165,7 @@ button, input, textarea, select {
 /* ─── PANELS ──────────────────────────────────────────────────────────── */
 .panel-surface {
   @apply rounded-xl border backdrop-blur-2xl;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--theme-glass-border);
   background: linear-gradient(
     160deg,
     rgba(255, 255, 255, 0.07) 0%,
@@ -169,13 +183,13 @@ button, input, textarea, select {
   position: absolute;
   top: 0; left: 20%; right: 20%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(32, 227, 194, 0.18), transparent);
+  background: linear-gradient(90deg, transparent, var(--theme-glass-highlight), transparent);
   pointer-events: none;
 }
 
 .panel-soft {
   @apply rounded-xl border backdrop-blur-xl;
-  border-color: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--theme-glass-border) 72%, rgba(255, 255, 255, 0.06));
   background: linear-gradient(
     160deg,
     rgba(255, 255, 255, 0.05) 0%,
@@ -216,7 +230,7 @@ button, input, textarea, select {
   flex-shrink: 0;
   width: 14px;
   height: 1px;
-  background: linear-gradient(90deg, rgba(32, 227, 194, 0.45), transparent);
+  background: linear-gradient(90deg, rgba(var(--theme-accent), 0.45), transparent);
 }
 
 /* ─── STATUS CHIP ─────────────────────────────────────────────────────── */
@@ -262,14 +276,14 @@ button, input, textarea, select {
   font-weight: 500;
   letter-spacing: 0.01em;
   color: #050708;
-  background: var(--teal);
+  background: var(--theme-accent-strong);
   border: 1px solid transparent;
-  box-shadow: 0 0 24px rgba(32, 227, 194, 0.18);
+  box-shadow: 0 0 24px var(--theme-shadow);
 }
 
 .primary-button:hover:not(:disabled) {
-  background: #3eefd1;
-  box-shadow: 0 0 36px rgba(32, 227, 194, 0.28);
+  background: color-mix(in srgb, var(--theme-accent-strong) 88%, white);
+  box-shadow: 0 0 36px var(--theme-shadow);
   transform: translateY(-1px);
 }
 
@@ -399,6 +413,398 @@ button, input, textarea, select {
 .voice-dot:nth-child(2) { animation-delay: 0.15s; }
 .voice-dot:nth-child(3) { animation-delay: 0.30s; }
 
+/* ─── PREMIUM AI ORB ─────────────────────────────────────────────────────── */
+.ai-orb-stage {
+  --orb-core: rgba(245, 253, 255, 0.95);
+  --orb-mid: rgba(141, 239, 255, 0.5);
+  --orb-edge: rgba(102, 116, 255, 0.24);
+  --orb-accent: rgba(141, 239, 255, 0.88);
+  --orb-accent-soft: rgba(32, 227, 194, 0.24);
+  --orb-glow: rgba(32, 227, 194, 0.18);
+  --orb-intensity: 0;
+  --orb-scale: 1;
+  --orb-ripple: 0;
+  position: relative;
+  display: inline-flex;
+  width: 212px;
+  height: 212px;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.ai-orb-aura {
+  position: absolute;
+  inset: 12px;
+  z-index: 0;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, var(--orb-glow), transparent 62%),
+    radial-gradient(circle at 48% 56%, var(--orb-accent-soft), transparent 72%);
+  filter: blur(calc(22px + var(--orb-intensity) * 24px));
+  opacity: calc(0.52 + var(--orb-intensity) * 0.32);
+  transform: scale(calc(1 + var(--orb-intensity) * 0.16));
+  transition: filter 240ms ease, opacity 240ms ease;
+}
+
+.ai-orb-ripple {
+  position: absolute;
+  inset: 28px;
+  z-index: 1;
+  border-radius: 999px;
+  border: 1px solid var(--orb-accent);
+  opacity: calc(var(--orb-ripple) * 0.18);
+  transform: scale(calc(1.08 + var(--orb-ripple) * 0.34));
+  filter: blur(0.2px);
+  pointer-events: none;
+}
+
+.ai-orb-ripple-one {
+  animation: aiOrbRipple 2.8s ease-out infinite;
+}
+
+.ai-orb-ripple-two {
+  animation: aiOrbRipple 2.8s ease-out 1.35s infinite;
+}
+
+.ai-orb {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  width: 148px;
+  height: 148px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  box-shadow:
+    0 30px 90px color-mix(in srgb, var(--orb-accent) 24%, transparent),
+    0 0 80px var(--orb-glow),
+    inset 0 1px 22px rgba(255, 255, 255, 0.13);
+  outline: none;
+  transform: scale(var(--orb-scale));
+  transition:
+    border-color 360ms ease,
+    box-shadow 260ms ease,
+    transform 120ms ease-out;
+}
+
+.ai-orb:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.ai-orb:focus-visible {
+  box-shadow:
+    0 0 0 4px rgba(32, 227, 194, 0.12),
+    0 30px 90px color-mix(in srgb, var(--orb-accent) 28%, transparent),
+    0 0 80px var(--orb-glow),
+    inset 0 1px 22px rgba(255, 255, 255, 0.13);
+}
+
+.ai-orb:active {
+  transform: scale(calc(var(--orb-scale) * 0.97));
+}
+
+.ai-orb-shell,
+.ai-orb-distortion,
+.ai-orb-core,
+.ai-orb-sheen,
+.ai-orb-highlight {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ai-orb-shell {
+  background:
+    radial-gradient(circle at 33% 22%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.20) 16%, transparent 34%),
+    radial-gradient(circle at 54% 60%, var(--orb-mid), var(--orb-edge) 58%, rgba(255, 255, 255, 0.045) 100%);
+  opacity: 0.98;
+  animation: aiOrbBreath 7.5s ease-in-out infinite;
+}
+
+.ai-orb-distortion {
+  inset: -18%;
+  background:
+    conic-gradient(
+      from 120deg,
+      transparent 0deg,
+      var(--orb-accent-soft) 64deg,
+      transparent 132deg,
+      var(--orb-edge) 214deg,
+      transparent 300deg,
+      var(--orb-accent-soft) 360deg
+    );
+  filter: blur(14px);
+  mix-blend-mode: screen;
+  opacity: calc(0.28 + var(--orb-intensity) * 0.28);
+  animation: aiOrbDrift 12s ease-in-out infinite;
+}
+
+.ai-orb-core {
+  inset: 24%;
+  background:
+    radial-gradient(circle at 42% 32%, var(--orb-core), var(--orb-accent) 38%, var(--orb-accent-soft) 72%, transparent 100%);
+  filter: blur(1px);
+  opacity: calc(0.48 + var(--orb-intensity) * 0.26);
+  transform: scale(calc(0.9 + var(--orb-intensity) * 0.26));
+}
+
+.ai-orb-sheen {
+  background:
+    linear-gradient(132deg, rgba(255, 255, 255, 0.52) 0%, transparent 28%),
+    radial-gradient(circle at 26% 22%, rgba(255, 255, 255, 0.44), transparent 22%);
+  opacity: 0.44;
+  mix-blend-mode: screen;
+}
+
+.ai-orb-highlight {
+  inset: 10%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 0 36px rgba(255, 255, 255, 0.06),
+    inset 0 -18px 32px rgba(0, 0, 0, 0.12);
+}
+
+.ai-orb-content {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  min-width: 50px;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.88);
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--orb-accent) 46%, transparent));
+}
+
+.ai-orb-presence-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 42% 36%, rgba(255, 255, 255, 0.96), var(--orb-accent) 42%, transparent 72%);
+  opacity: 0.82;
+  animation: aiOrbPresence 5.6s ease-in-out infinite;
+}
+
+.ai-orb-level-glyph {
+  display: flex;
+  height: 54px;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-orb-level-glyph span {
+  display: block;
+  width: 4px;
+  min-height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), var(--orb-accent));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--orb-accent) 44%, transparent);
+  transition: height 84ms ease-out, opacity 120ms ease-out;
+}
+
+.ai-orb-level-glyph.is-speaking span {
+  transition-duration: 60ms;
+}
+
+.ai-orb-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ai-orb-thinking-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--orb-accent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--orb-accent) 42%, transparent);
+  animation: aiOrbDot 1.4s ease-in-out infinite;
+}
+
+.ai-orb-thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
+.ai-orb-thinking-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+.ai-orb-stage.is-thinking .ai-orb-distortion {
+  animation-duration: 6s;
+}
+
+.ai-orb-stage.is-listening .ai-orb,
+.ai-orb-stage.is-speaking .ai-orb {
+  box-shadow:
+    0 34px 104px color-mix(in srgb, var(--orb-accent) 34%, transparent),
+    0 0 calc(70px + var(--orb-intensity) * 60px) var(--orb-glow),
+    inset 0 1px 24px rgba(255, 255, 255, 0.15);
+}
+
+.mini-ai-orb {
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,0.92), rgba(255,255,255,0.18) 18%, transparent 36%),
+    radial-gradient(circle at 50% 60%, rgba(32,227,194,0.32), rgba(102,116,255,0.18) 54%, rgba(255,255,255,0.04) 100%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 12px rgba(255,255,255,0.12),
+    0 18px 60px rgba(32,227,194,0.14);
+}
+
+.mini-ai-orb.is-active {
+  animation: aiOrbMiniPulse 1.8s ease-in-out infinite;
+}
+
+/* Organic ethereal orb, closer to the Vimi reference: no icon, no bars, no mascot. */
+.ai-orb-stage {
+  width: 440px;
+  height: 310px;
+  transform: translateZ(0);
+}
+
+.ai-orb-aura {
+  inset: 8px 10px -8px;
+  border-radius: 48% 52% 45% 55% / 54% 46% 56% 44%;
+  background:
+    radial-gradient(ellipse at 48% 55%, var(--orb-glow), transparent 46%),
+    radial-gradient(ellipse at 30% 70%, var(--orb-accent-soft), transparent 60%),
+    radial-gradient(ellipse at 62% 22%, var(--orb-edge), transparent 58%);
+  filter: blur(calc(44px + var(--orb-intensity) * 36px));
+  opacity: calc(0.62 + var(--orb-intensity) * 0.25);
+  transform: scale(calc(1.04 + var(--orb-intensity) * 0.10));
+}
+
+.ai-orb-field {
+  position: absolute;
+  z-index: 1;
+  width: 356px;
+  height: 228px;
+  border-radius: 49% 51% 46% 54% / 55% 44% 56% 45%;
+  pointer-events: none;
+  filter: blur(0.4px);
+  opacity: calc(0.24 + var(--orb-intensity) * 0.18);
+  transform: scale(calc(1 + var(--orb-intensity) * 0.07));
+}
+
+.ai-orb-field-back {
+  background:
+    radial-gradient(ellipse at 12% 76%, var(--orb-accent), transparent 34%),
+    radial-gradient(ellipse at 78% 24%, var(--orb-edge), transparent 36%);
+  filter: blur(30px);
+  animation: aiOrbBlobDrift 9s ease-in-out infinite;
+}
+
+.ai-orb-field-front {
+  width: 350px;
+  height: 210px;
+  border: 1px solid color-mix(in srgb, var(--orb-accent) 58%, transparent);
+  opacity: calc(0.22 + var(--orb-intensity) * 0.22);
+  mix-blend-mode: screen;
+  animation: aiOrbMembrane 7s ease-in-out infinite reverse;
+}
+
+.ai-orb {
+  width: 390px;
+  height: 270px;
+  border: 0;
+  background: transparent;
+  box-shadow:
+    0 46px 150px color-mix(in srgb, var(--orb-accent) 16%, transparent),
+    0 0 150px var(--orb-glow);
+  transform:
+    translateX(var(--orb-wobble))
+    scale(var(--orb-scale))
+    scaleX(var(--orb-squash-x))
+    scaleY(var(--orb-squash-y));
+  transition: box-shadow 360ms ease, filter 360ms ease, transform 90ms ease-out;
+  animation: aiOrbCellFloat 9s ease-in-out infinite;
+}
+
+.ai-orb:hover {
+  box-shadow:
+    0 50px 160px color-mix(in srgb, var(--orb-accent) 22%, transparent),
+    0 0 170px var(--orb-glow);
+}
+
+.ai-orb:focus-visible {
+  box-shadow:
+    0 0 0 4px rgba(var(--theme-accent), 0.12),
+    0 50px 160px color-mix(in srgb, var(--orb-accent) 24%, transparent),
+    0 0 170px var(--orb-glow);
+}
+
+.ai-orb-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: translateZ(0);
+}
+
+.ai-cell-halo {
+  opacity: calc(0.58 + var(--orb-intensity) * 0.22);
+  transform-origin: 50% 54%;
+  animation: aiCellHalo 8.5s ease-in-out infinite;
+}
+
+.ai-cell-body {
+  transform-origin: 50% 54%;
+  animation: aiCellBody 8s ease-in-out infinite;
+}
+
+.ai-cell-wing-left {
+  opacity: calc(0.54 + var(--orb-intensity) * 0.18);
+  transform-origin: 32% 63%;
+  animation: aiCellWingLeft 7.4s ease-in-out infinite;
+}
+
+.ai-cell-wing-top {
+  opacity: calc(0.38 + var(--orb-intensity) * 0.16);
+  transform-origin: 58% 28%;
+  animation: aiCellWingTop 9.2s ease-in-out infinite;
+}
+
+.ai-cell-main {
+  opacity: calc(0.82 + var(--orb-intensity) * 0.10);
+}
+
+.ai-cell-inner {
+  opacity: calc(0.56 - var(--orb-intensity) * 0.10);
+}
+
+.ai-cell-nucleus {
+  opacity: calc(0.58 + var(--orb-intensity) * 0.25);
+  transform-origin: 50% 53%;
+  transform: scale(calc(0.96 + var(--orb-intensity) * 0.12));
+  filter: blur(calc(10px + var(--orb-intensity) * 8px));
+}
+
+.ai-cell-rim {
+  opacity: calc(0.35 + var(--orb-intensity) * 0.28);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--orb-accent) 60%, transparent));
+}
+
+.ai-cell-sheen {
+  opacity: calc(0.18 + var(--orb-intensity) * 0.10);
+}
+
+.ai-orb-stage.is-listening .ai-orb,
+.ai-orb-stage.is-speaking .ai-orb {
+  filter: brightness(calc(1 + var(--orb-intensity) * 0.16));
+}
+
+.mini-ai-orb {
+  border-radius: 48% 52% 45% 55% / 53% 45% 55% 47%;
+  background:
+    radial-gradient(ellipse at 50% 54%, rgba(248, 245, 255, 0.78), rgba(var(--theme-accent), 0.42) 32%, rgba(var(--theme-secondary), 0.28) 68%, rgba(255,255,255,0.04) 100%);
+  box-shadow:
+    inset 0 1px 12px rgba(255,255,255,0.16),
+    0 18px 60px var(--theme-shadow);
+}
+
 /* ─── SCROLLBAR ───────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -449,5 +855,97 @@ button, input, textarea, select {
 @keyframes dotBounce {
   0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
   40%            { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes aiOrbBreath {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: saturate(1); }
+  50%      { transform: scale(1.025) rotate(1deg); filter: saturate(1.16); }
+}
+
+@keyframes aiOrbDrift {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50%      { transform: rotate(130deg) scale(1.08); }
+}
+
+@keyframes aiOrbRipple {
+  0%   { opacity: calc(var(--orb-ripple) * 0.22); transform: scale(0.88); }
+  70%  { opacity: calc(var(--orb-ripple) * 0.08); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+@keyframes aiOrbPresence {
+  0%, 100% { transform: scale(0.94); opacity: 0.68; }
+  50%      { transform: scale(1.06); opacity: 0.9; }
+}
+
+@keyframes aiOrbDot {
+  0%, 80%, 100% { transform: translateY(0) scale(0.9); opacity: 0.45; }
+  40%           { transform: translateY(-3px) scale(1.06); opacity: 1; }
+}
+
+@keyframes aiOrbMiniPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+@keyframes aiOrbMembrane {
+  0%, 100% {
+    border-radius: 48% 52% 45% 55% / 53% 45% 55% 47%;
+  }
+  33% {
+    border-radius: 54% 46% 51% 49% / 48% 56% 44% 52%;
+  }
+  66% {
+    border-radius: 45% 55% 53% 47% / 56% 43% 57% 44%;
+  }
+}
+
+@keyframes aiOrbBlobDrift {
+  0%, 100% { transform: translate3d(-4px, 2px, 0) scale(1) rotate(0deg); }
+  50%      { transform: translate3d(6px, -5px, 0) scale(1.07) rotate(5deg); }
+}
+
+@keyframes aiOrbCellFloat {
+  0%, 100% { filter: saturate(1.06) brightness(1); }
+  50%      { filter: saturate(1.18) brightness(1.05); }
+}
+
+@keyframes aiCellBody {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-1deg) scale(1); }
+  35%      { transform: translate3d(4px, -3px, 0) rotate(1.4deg) scale(1.018); }
+  68%      { transform: translate3d(-5px, 4px, 0) rotate(-0.8deg) scale(0.992); }
+}
+
+@keyframes aiCellHalo {
+  0%, 100% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.54; }
+  50%      { transform: scale(1.06) translate3d(0, -4px, 0); opacity: 0.72; }
+}
+
+@keyframes aiCellWingLeft {
+  0%, 100% { transform: translate3d(-3px, 2px, 0) scale(1); }
+  50%      { transform: translate3d(9px, -6px, 0) scale(1.08); }
+}
+
+@keyframes aiCellWingTop {
+  0%, 100% { transform: translate3d(4px, -2px, 0) scale(1); }
+  50%      { transform: translate3d(-7px, 5px, 0) scale(1.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-orb-shell,
+  .ai-orb-distortion,
+  .ai-orb-ripple,
+  .ai-orb-presence-mark,
+  .ai-orb-thinking-dots span,
+  .ai-orb,
+  .ai-orb-field,
+  .ai-orb-bloom,
+  .ai-cell-halo,
+  .ai-cell-body,
+  .ai-cell-wing-left,
+  .ai-cell-wing-top,
+  .mini-ai-orb.is-active {
+    animation: none;
+  }
 }
 

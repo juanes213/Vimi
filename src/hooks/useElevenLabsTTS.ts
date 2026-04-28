@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAudioAnalyzer } from "./useAudioAnalyzer";
 
 const API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined;
 const VOICE_ID = (import.meta.env.VITE_ELEVENLABS_VOICE_ID as string | undefined) ?? "21m00Tcm4TlvDq8ikWAM";
@@ -12,6 +13,12 @@ export function useElevenLabsTTS() {
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
   const textBufferRef = useRef("");
+  const {
+    level,
+    isPlaying,
+    attachSource,
+    detach,
+  } = useAudioAnalyzer();
 
   const ensureAudioContext = useCallback(() => {
     if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
@@ -119,12 +126,15 @@ export function useElevenLabsTTS() {
       stopActiveSource();
       const source = ctx.createBufferSource();
       source.buffer = decoded;
-      source.connect(ctx.destination);
+      // Route TTS playback through the analyzer so the orb responds to
+      // real speech amplitude rather than a generic speaking animation.
+      attachSource(ctx, source);
       activeSourceRef.current = source;
       source.onended = () => {
         if (activeSourceRef.current === source) {
           activeSourceRef.current = null;
         }
+        detach();
         setStatus("idle");
       };
       setStatus("speaking");
@@ -141,15 +151,16 @@ export function useElevenLabsTTS() {
         requestAbortRef.current = null;
       }
     }
-  }, [resumeAudioContext, stopActiveSource]);
+  }, [attachSource, detach, resumeAudioContext, stopActiveSource]);
 
   const stop = useCallback(() => {
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
     textBufferRef.current = "";
     stopActiveSource();
+    detach();
     setStatus("idle");
-  }, [stopActiveSource]);
+  }, [detach, stopActiveSource]);
 
   useEffect(() => {
     return () => {
@@ -160,5 +171,13 @@ export function useElevenLabsTTS() {
     };
   }, [stop]);
 
-  return { status, start, sendText, flush, stop };
+  return {
+    status,
+    level,
+    isPlaying,
+    start,
+    sendText,
+    flush,
+    stop,
+  };
 }

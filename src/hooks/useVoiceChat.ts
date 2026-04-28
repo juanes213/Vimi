@@ -242,6 +242,8 @@ export function useVoiceChat() {
     autoListen,
     setAutoListen,
     micLevel: recorder.level,
+    speechLevel: tts.level,
+    ttsIsPlaying: tts.isPlaying,
     startListening,
     stopAll,
     interruptAndSend,

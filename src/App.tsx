@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type ComponentType, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import { Authenticated, Unauthenticated, useAction, useQuery } from "convex/react";
 import { Toaster, toast } from "sonner";
 import { api } from "../convex/_generated/api";
 import { BudgetsSection } from "./components/BudgetsSection";
+import { CentralOrb } from "./components/CentralOrb";
 import { ChatTranscript } from "./components/ChatSection";
 import { EventsSection } from "./components/EventsSection";
 import { PaymentsSection } from "./components/PaymentsSection";
@@ -13,6 +14,7 @@ import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
 import { useVoiceChat, type VoiceMode } from "./hooks/useVoiceChat";
 import { useElectronBridge } from "./hooks/useElectronBridge";
+import { getToneThemeStyle, inferToneFromAssistant } from "./lib/orbTone";
 import { cn } from "./lib/utils";
 
 const COMPANION_PILLARS = [
@@ -97,7 +99,7 @@ function AuthPage() {
           <span className="status-chip">Vimi / life assistant</span>
           <h1 className="mt-6 max-w-3xl text-4xl font-light leading-tight text-white sm:text-5xl">
             Your life, decided by you.{" "}
-            <em className="italic text-[rgba(32,227,194,0.7)]">Executed by Vimi.</em>
+            <em className="italic text-[var(--theme-accent-strong)] opacity-80">Executed by Vimi.</em>
           </h1>
           <p className="mt-5 max-w-2xl text-base font-light leading-7 text-[rgba(180,204,201,0.5)] sm:text-lg">
             Vimi should feel like an intelligent companion with agency: warm, clear, and ready to
@@ -120,7 +122,7 @@ function AuthPage() {
               <div className="absolute inset-[22%] rounded-full border border-white/20 bg-white/8" />
             </div>
             <div>
-              <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">Welcome to Vimi</p>
+              <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[var(--theme-accent-strong)] opacity-60">Welcome to Vimi</p>
               <h2 className="mt-1 text-3xl font-light text-white">Step into your orbit</h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-[rgba(180,204,201,0.5)]">
                 A calmer, more immersive entry point built around Vimi instead of around a dashboard.
@@ -157,12 +159,11 @@ function Dashboard() {
   const googleIntegration = integrations.find((integration) => integration.provider === "google");
   const lastReminderToastId = useRef<string | null>(null);
   const lastHandledAssistantActionId = useRef<string | null>(null);
-  const orbStyle: CSSProperties = {
-    background:
-      "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), rgba(255,255,255,0.16) 18%, transparent 36%), radial-gradient(circle at 50% 60%, rgba(32,227,194,0.28), rgba(102,116,255,0.18) 54%, rgba(255,255,255,0.04) 100%)",
-    boxShadow:
-      "0 0 0 1px rgba(255,255,255,0.12), 0 32px 120px rgba(32,227,194,0.18), 0 0 80px rgba(102,116,255,0.10)",
-  };
+  const latestAssistantActionType = [...chatMessages]
+    .reverse()
+    .find((message) => message.role === "assistant" && !!message.parsedType)?.parsedType;
+  const orbTone = inferToneFromAssistant(latestAssistantActionType, voice.activeMode, pendingApprovals.length);
+  const toneThemeStyle = getToneThemeStyle(orbTone, voice.activeMode);
 
   const launchVimi = () => {
     if (voice.activeMode === "idle") {
@@ -241,7 +242,7 @@ function Dashboard() {
   };
 
   return (
-    <div className="space-glass-bg relative flex h-screen overflow-hidden">
+    <div className={cn("space-glass-bg relative flex h-screen overflow-hidden", `tone-${orbTone}`)} style={toneThemeStyle}>
       <BackgroundEffects />
 
       <Sidebar active={activePage} onChange={setActivePage} />
@@ -253,7 +254,7 @@ function Dashboard() {
           <main className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
             <div className="fade-rise mx-auto w-full max-w-3xl">
               {activePage === "chat" ? (
-                <VimiPage voice={voice} orbStyle={orbStyle} />
+                <VimiPage voice={voice} tone={orbTone} />
               ) : (
                 <FeaturePage section={activePage} />
               )}
@@ -289,10 +290,10 @@ function Dashboard() {
 
 function VimiPage({
   voice,
-  orbStyle,
+  tone,
 }: {
   voice: ReturnType<typeof useVoiceChat>;
-  orbStyle: CSSProperties;
+  tone: ReturnType<typeof inferToneFromAssistant>;
 }) {
   return (
     <div className="flex flex-col items-center gap-6 pt-2 text-center">
@@ -300,20 +301,22 @@ function VimiPage({
       <div className="fade-rise delay-1">
         <CentralOrb
           mode={voice.activeMode}
-          level={voice.micLevel}
-          orbStyle={orbStyle}
+          micLevel={voice.micLevel}
+          speechLevel={voice.speechLevel}
+          tone={tone}
+          isSpeaking={voice.ttsIsPlaying}
           onClick={voice.activeMode === "idle" ? voice.startListening : voice.stopAll}
         />
       </div>
 
       {/* Title */}
       <div className="fade-rise delay-2 max-w-lg">
-        <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">
+        <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[var(--theme-accent-strong)] opacity-60">
           Vimi · Presence Mode
         </p>
         <h1 className="mt-3 font-['Geist'] text-4xl font-light leading-tight text-white sm:text-5xl">
           Your life,{" "}
-          <em className="italic text-[rgba(32,227,194,0.7)]">your orbit.</em>
+          <em className="italic text-[var(--theme-accent-strong)] opacity-80">your orbit.</em>
         </h1>
         <p className="mt-4 text-sm font-light leading-7 text-[rgba(180,204,201,0.5)]">
           {voice.activeMode === "idle"     && "Tap the orb to talk with Vimi"}
@@ -354,7 +357,7 @@ function FeaturePage({ section }: { section: Exclude<Section, "chat"> }) {
       <div className="panel-surface fade-rise px-7 py-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl">
-            <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[rgba(32,227,194,0.55)]">
+            <p className="font-['Geist'] text-[10px] uppercase tracking-[0.2em] text-[var(--theme-accent-strong)] opacity-60">
               {detail.eyebrow}
             </p>
             <h2 className="mt-3 font-['Geist'] text-4xl font-light text-white">{detail.label}</h2>
@@ -462,7 +465,7 @@ function SideInfoPanel({
             onClick={onToggleAutoListen}
             className={cn(
               "status-chip mt-4 cursor-pointer transition-colors",
-              autoListen && "!border-[rgba(32,227,194,0.4)] !bg-[rgba(32,227,194,0.08)] !text-[rgba(32,227,194,0.85)]",
+              autoListen && "!border-[rgba(var(--theme-accent),0.4)] !bg-[var(--theme-accent-soft)] !text-[var(--theme-accent-strong)]",
             )}
           >
             {autoListen ? "auto-listen on" : "auto-listen off"}
@@ -545,85 +548,10 @@ function BackgroundEffects() {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="starfield starfield-near absolute inset-0" />
       <div className="starfield starfield-far absolute inset-0" />
-      <div className="absolute left-[-10rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[rgba(32,227,194,0.07)] blur-[130px]" />
-      <div className="absolute right-[-8rem] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(102,116,255,0.07)] blur-[120px]" />
-      <div className="absolute bottom-[-12rem] left-[14%] h-[30rem] w-[30rem] rounded-full bg-[rgba(32,227,194,0.05)] blur-[150px]" />
-      <div className="absolute bottom-[10%] right-[10%] h-[20rem] w-[20rem] rounded-full bg-[rgba(102,116,255,0.06)] blur-[110px]" />
-    </div>
-  );
-}
-
-function CentralOrb({
-  mode,
-  level,
-  orbStyle,
-  onClick,
-}: {
-  mode: VoiceMode;
-  level: number;
-  orbStyle: CSSProperties;
-  onClick: () => void;
-}) {
-  return (
-    <div className="relative inline-flex items-center justify-center p-8">
-      {/* outer ring */}
-      <span
-        className="pointer-events-none absolute inset-0 rounded-full border border-[rgba(255,255,255,0.06)]"
-        style={{ animation: "orbThink 12s linear infinite" }}
-      />
-      {/* mid dashed ring */}
-      <span
-        className="pointer-events-none absolute inset-4 rounded-full border border-dashed border-[rgba(32,227,194,0.1)]"
-        style={{ animation: "orbThink 20s linear infinite reverse" }}
-      />
-
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={mode === "idle" ? "Talk to Vimi" : "Stop"}
-        className={cn(
-          "voice-orb relative h-32 w-32 cursor-pointer border-none outline-none transition-transform duration-300 active:scale-95 sm:h-36 sm:w-36",
-          mode === "idle"      && "is-idle floating-orb",
-          mode === "listening" && "is-listening",
-          mode === "thinking"  && "is-thinking",
-          mode === "speaking"  && "is-speaking",
-        )}
-        style={mode === "idle" ? orbStyle : undefined}
-      >
-        <div className="absolute inset-[-8%] rounded-full border border-[rgba(255,255,255,0.07)] bg-white/[0.015] blur-sm" />
-        <div className="absolute inset-[14%] rounded-full border border-[rgba(255,255,255,0.14)] bg-white/[0.04] backdrop-blur-sm" />
-        <div className="absolute inset-[30%] rounded-full border border-[rgba(255,255,255,0.12)] bg-white/[0.03]" />
-
-        <div className="absolute inset-0 flex items-center justify-center">
-          {mode === "idle" && (
-            <svg viewBox="0 0 24 24" fill="none" className="h-10 w-10 text-white" strokeWidth="1.6" stroke="currentColor">
-              <rect x="9" y="3" width="6" height="12" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
-            </svg>
-          )}
-          {mode === "listening" && <OrbAudioBars level={level} />}
-          {mode === "thinking"  && (
-            <span className="flex gap-2">
-              <span className="voice-dot !h-2.5 !w-2.5" />
-              <span className="voice-dot !h-2.5 !w-2.5" />
-              <span className="voice-dot !h-2.5 !w-2.5" />
-            </span>
-          )}
-          {mode === "speaking" && <OrbSpeakingWave />}
-        </div>
-
-        {mode !== "idle" && (
-          <div
-            className={cn(
-              "absolute inset-0 rounded-full",
-              mode === "listening" && "animate-ping opacity-10 ring-4 ring-[rgba(32,227,194,0.5)]",
-              mode === "speaking"  && "animate-ping opacity-[0.12] ring-4 ring-[rgba(32,227,194,0.5)]",
-              mode === "thinking"  && "animate-pulse opacity-10 ring-4 ring-[rgba(102,116,255,0.4)]",
-            )}
-            style={{ animationDuration: mode === "thinking" ? "1.4s" : "1.2s" }}
-          />
-        )}
-      </button>
+      <div className="absolute left-[-10rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[rgba(var(--theme-accent),0.07)] blur-[130px]" />
+      <div className="absolute right-[-8rem] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(var(--theme-secondary),0.07)] blur-[120px]" />
+      <div className="absolute bottom-[-12rem] left-[14%] h-[30rem] w-[30rem] rounded-full bg-[rgba(var(--theme-accent),0.05)] blur-[150px]" />
+      <div className="absolute bottom-[10%] right-[10%] h-[20rem] w-[20rem] rounded-full bg-[rgba(var(--theme-secondary),0.06)] blur-[110px]" />
     </div>
   );
 }
@@ -635,7 +563,7 @@ function MiniOrbLauncher({ mode, onClick }: { mode: VoiceMode; onClick: () => vo
       onClick={onClick}
       className={cn(
         "fixed bottom-10 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full border text-white transition-all duration-300 hover:scale-105",
-        mode === "idle" ? "galaxy-orb-idle border-[rgba(255,255,255,0.1)]" : "voice-orb is-thinking",
+        mode === "idle" ? "mini-ai-orb is-idle" : "mini-ai-orb is-active",
       )}
       aria-label="Open Vimi"
       title="Open Vimi"
@@ -645,40 +573,6 @@ function MiniOrbLauncher({ mode, onClick }: { mode: VoiceMode; onClick: () => vo
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
       </svg>
     </button>
-  );
-}
-
-function OrbAudioBars({ level }: { level: number }) {
-  const base = Math.max(0.18, level);
-  const heights = [0.45, 0.7, 1, 0.8, 0.55, 0.75, 0.4].map((factor) =>
-    Math.min(56, base * 60 * factor + 6),
-  );
-  return (
-    <span className="flex items-center gap-[3px]">
-      {heights.map((height, index) => (
-        <span key={index} className="voice-bar !w-[4px]" style={{ height: `${height}px` }} />
-      ))}
-    </span>
-  );
-}
-
-function OrbSpeakingWave() {
-  return (
-    <span className="flex items-center gap-[3px]">
-      {[0, 1, 2, 3, 4, 5, 6].map((index) => (
-        <span
-          key={index}
-          className="voice-bar !w-[4px]"
-          style={{ animation: `speakBar 0.9s ease-in-out ${index * 0.08}s infinite` }}
-        />
-      ))}
-      <style>{`
-        @keyframes speakBar {
-          0%, 100% { height: 8px; }
-          50% { height: 44px; }
-        }
-      `}</style>
-    </span>
   );
 }
 
@@ -741,9 +635,9 @@ function StatusStrip() {
   return (
     <div className="flex h-7 shrink-0 items-center gap-5 border-t border-[rgba(255,255,255,0.05)] bg-[rgba(5,7,8,0.88)] px-5">
       {[
-        { color: "var(--teal)",   label: "Vimi online" },
+        { color: "var(--theme-accent-strong)",   label: "Vimi online" },
         { color: "var(--violet)", label: "Convex connected" },
-        { color: "var(--teal)",   label: "TTS ready" },
+        { color: "var(--theme-accent-strong)",   label: "TTS ready" },
       ].map(({ color, label }) => (
         <div key={label} className="flex items-center gap-1.5">
           <span
